@@ -3,6 +3,7 @@
 import argparse
 import json
 import sys
+from datetime import datetime
 from decimal import Decimal
 from pathlib import Path
 from typing import Sequence, TextIO
@@ -14,8 +15,20 @@ from reserve_pay_optimizer.services.evaluation_input import parse_evaluation_dat
 from reserve_pay_optimizer.services.mobility_validation import (
     validate_mobility_transaction,
 )
+from reserve_pay_optimizer.simulation.config import SimulationConfig
+from reserve_pay_optimizer.simulation.generator import simulate_transactions
 from reserve_pay_optimizer.strategies.exact_estimate import ExactEstimateStrategy
 from reserve_pay_optimizer.strategies.fixed_buffer import FixedBufferStrategy
+
+
+def _datetime_argument(value: str) -> datetime:
+    try:
+        parsed = datetime.fromisoformat(value.strip().replace("Z", "+00:00"))
+    except ValueError as exc:
+        raise argparse.ArgumentTypeError("must be a valid RFC 3339 datetime") from exc
+    if parsed.tzinfo is None or parsed.utcoffset() is None:
+        raise argparse.ArgumentTypeError("must include a UTC offset")
+    return parsed
 
 
 def _parser() -> argparse.ArgumentParser:
@@ -39,6 +52,20 @@ def _parser() -> argparse.ArgumentParser:
         type=Path,
         help="evaluation dataset JSON file; omit to read JSON from standard input",
     )
+    simulate = subparsers.add_parser(
+        "simulate-mobility",
+        help="generate deterministic synthetic India mobility transactions",
+    )
+    simulate.add_argument("--count", type=int, default=100)
+    simulate.add_argument("--seed", type=int, default=42)
+    simulate.add_argument("--customer-pool-size", type=int, default=25)
+    simulate.add_argument("--start-datetime", type=_datetime_argument)
+    simulate.add_argument("--end-datetime", type=_datetime_argument)
+    simulate.add_argument(
+        "--output",
+        type=Path,
+        help="write dataset JSON here; omit to write the dataset to standard output",
+    )
     return parser
 
 
@@ -60,27 +87,57 @@ def _error_response(error: DomainValidationError) -> dict[str, object]:
 def main(argv: Sequence[str] | None = None) -> int:
     args = _parser().parse_args(argv)
     try:
-        if args.file:
-            with args.file.open("r", encoding="utf-8") as stream:
-                payload = _load_payload(stream)
-        else:
-            payload = _load_payload(sys.stdin)
-        if args.command == "validate-mobility":
-            result = validate_mobility_transaction(payload)  # type: ignore[arg-type]
-        else:
-            transactions, outcomes = parse_evaluation_dataset(payload)  # type: ignore[arg-type]
-            comparison = compare_strategies(
-                transactions,
-                outcomes,
-                (ExactEstimateStrategy(), FixedBufferStrategy()),
-            )
-            result = comparison.to_dict()
-            result.update(
-                {
-                    "domain": MOBILITY_DOMAIN.value,
-                    "currency": SUPPORTED_CURRENCY.value,
+        if args.command == "simulate-mobility":
+            config_kwargs: dict[str, object] = {
+                "transaction_count": args.count,
+                "seed": args.seed,
+                "customer_pool_size": args.customer_pool_size,
+            }
+            if args.start_datetime is not None:
+                config_kwargs["start_datetime"] = args.start_datetime
+            if args.end_datetime is not None:
+                config_kwargs["end_datetime"] = args.end_datetime
+            dataset = simulate_transactions(SimulationConfig(**config_kwargs))
+            serialized = dataset.to_dict()
+            if args.output is None:
+                result = serialized
+            else:
+                args.output.parent.mkdir(parents=True, exist_ok=True)
+                args.output.write_text(
+                    json.dumps(serialized, indent=2, sort_keys=True) + "\n",
+                    encoding="utf-8",
+                )
+                metadata = serialized["metadata"]
+                result = {
+                    "simulation_status": "complete",
+                    "output": str(args.output),
+                    "generator": metadata["generator"],
+                    "seed": metadata["seed"],
+                    "transaction_count": metadata["transaction_count"],
+                    "diagnostics": metadata["diagnostics"],
                 }
-            )
+        else:
+            if args.file:
+                with args.file.open("r", encoding="utf-8") as stream:
+                    payload = _load_payload(stream)
+            else:
+                payload = _load_payload(sys.stdin)
+            if args.command == "validate-mobility":
+                result = validate_mobility_transaction(payload)  # type: ignore[arg-type]
+            else:
+                transactions, outcomes = parse_evaluation_dataset(payload)  # type: ignore[arg-type]
+                comparison = compare_strategies(
+                    transactions,
+                    outcomes,
+                    (ExactEstimateStrategy(), FixedBufferStrategy()),
+                )
+                result = comparison.to_dict()
+                result.update(
+                    {
+                        "domain": MOBILITY_DOMAIN.value,
+                        "currency": SUPPORTED_CURRENCY.value,
+                    }
+                )
     except json.JSONDecodeError as exc:
         result = _error_response(
             DomainValidationError(

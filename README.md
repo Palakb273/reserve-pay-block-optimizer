@@ -1,6 +1,6 @@
 # Reserve Pay Block Optimizer
 
-This dependency-free Python 3.11+ project defines and measures reserve-block baselines for India-first mobility payments. Phase 2 provides the comparison framework that a future ML/optimization strategy must beat; it does not contain an optimizer.
+This dependency-free Python 3.11+ project defines, simulates, and measures reserve-block baselines for India-first mobility payments. Phase 3 adds reproducible synthetic transaction data; the project still does not contain ML or an optimizer.
 
 ## Problem
 
@@ -64,6 +64,95 @@ Disadvantages:
 - still fails when the final amount exceeds the fixed buffer.
 
 Neither baseline is assumed to be universally optimal.
+
+## Phase 3 - Transaction simulator
+
+Real production ride/payment data is unavailable during development, so Phase 3 generates reproducible synthetic `RideTransactionContext` and `RideTransactionOutcome` pairs. The generator uses the existing domain models and exports the existing Phase 2 evaluation-record shape.
+
+> City and fare behaviour are synthetic modeling assumptions for demonstration and experimentation. They are not claimed to be production Razorpay, Uber, Ola, or city-level statistics.
+
+The random seed controls all stochastic choices. The same configuration and seed produce the same typed records and byte-equivalent JSON content; a different seed changes the dataset. Transaction IDs remain deterministic (`SIM-000001`, `SIM-000002`, ...), while customer IDs are sampled from a configurable pool so repeat customers occur without introducing customer personalization.
+
+### Generated decision-time features
+
+- supported Indian city;
+- timezone-aware India timestamp and derived day of week;
+- distance sampled around the city's synthetic typical distance;
+- estimated duration derived from distance, synthetic average speed, time band, weekday/weekend context, and small planning variation;
+- bounded surge, with most rides at `1.00` and elevated surge less frequently;
+- estimated fare stored as exact integer paise.
+
+The simulator generates hidden route, traffic, and pricing-noise values only while realizing the outcome. They are never stored in `RideTransactionContext` or passed to a reserve strategy.
+
+### Synthetic fare formula
+
+The shared default fare assumptions are:
+
+```text
+base fare                    = 4,500 paise
+distance rate                = 1,400 paise/km
+duration rate                = 220 paise/minute
+distance range               = 0.8 to 40.0 km
+maximum surge                = 2.00
+
+estimated_fare = ceiling(
+    (base_fare
+     + distance * distance_rate
+     + estimated_duration * duration_rate)
+    * surge_multiplier
+)
+```
+
+This is an interpretable synthetic formula, not a reconstruction of any ride-hailing company's proprietary pricing.
+
+### Actual-fare uncertainty
+
+For each outcome, the generator samples bounded, city-profile-scaled route and traffic changes. Peak time bands increase the traffic uncertainty scale. It then computes:
+
+```text
+actual_distance = clamp(distance * (1 + route_change))
+
+actual_duration = round(
+    estimated_duration
+    * (1 + traffic_change + 0.35 * route_change)
+)
+
+actual_fare = round_half_up(
+    synthetic_fare(actual_distance, actual_duration, surge)
+    * (1 + bounded_pricing_noise)
+)
+```
+
+This relationship allows actual fares below, near, or above the estimate. Actual distance, actual duration, and pricing noise are latent outcome-generation details and are not exported as decision-time features.
+
+### Synthetic city profiles
+
+All values in this table are simulation assumptions:
+
+| City | Typical distance km | Spread km | Avg speed km/h | Traffic variation | Route variation | Base surge probability |
+|---|---:|---:|---:|---:|---:|---:|
+| Delhi | 10.0 | 6.0 | 25.0 | 0.09 | 0.045 | 0.09 |
+| Mumbai | 9.0 | 5.0 | 22.0 | 0.13 | 0.050 | 0.12 |
+| Bengaluru | 11.0 | 7.0 | 20.0 | 0.16 | 0.060 | 0.14 |
+| Hyderabad | 10.0 | 6.0 | 27.0 | 0.10 | 0.045 | 0.10 |
+| Pune | 8.0 | 5.0 | 25.0 | 0.11 | 0.050 | 0.10 |
+| Chennai | 10.0 | 6.0 | 26.0 | 0.10 | 0.045 | 0.09 |
+| Kolkata | 8.0 | 5.0 | 23.0 | 0.12 | 0.050 | 0.10 |
+
+Time bands use synthetic traffic/uncertainty/surge-probability multipliers: low demand (`0.85/0.80/0.50`), normal daytime (`1.00/1.00/1.00`), morning peak (`1.30/1.30/1.80`), and evening peak (`1.40/1.40/2.00`). Surge probability is capped at `0.45` and surge itself at `2.00` by default.
+
+### Simulator diagnostics
+
+Every exported dataset includes descriptive diagnostics in `metadata.diagnostics`:
+
+- transaction and unique-customer counts;
+- counts per city;
+- average estimated and actual amounts;
+- rates of actual fare above, below, equal to, and within 2% of estimate;
+- average absolute estimate/actual difference;
+- surge frequency.
+
+These are dataset-quality diagnostics, not final evidence KPIs or production statistics.
 
 ## Strategy extension boundary
 
@@ -139,12 +228,18 @@ src/reserve_pay_optimizer/
     evaluation.py                   Transaction and aggregate evaluation
     comparison.py                   Fair multi-strategy comparison
     evaluation_input.py             Separated JSON dataset parser
+  simulation/
+    config.py                       Validated simulator/fare configuration
+    profiles.py                     Synthetic city and time-band assumptions
+    generator.py                    Seeded context/outcome generation
+    models.py                       Records, datasets, and diagnostics model
+    diagnostics.py                  Dataset quality summary
   cli.py                            CLI adapter
 examples/
   valid_hyderabad_ride.json
   invalid_ride.json
   baseline_evaluation.json          Deterministic Phase 2 fixture
-tests/                              Phase 1 and Phase 2 tests
+tests/                              Phase 1, Phase 2, and Phase 3 tests
 ```
 
 Domain and service code remains independent of HTTP and Razorpay SDK objects. Runtime dependencies remain empty.
@@ -169,6 +264,51 @@ Compare both Phase 2 baselines on the same completed records:
 
 ```powershell
 python -m reserve_pay_optimizer evaluate-baselines --file examples/baseline_evaluation.json
+```
+
+Generate 10,000 records to a file and print a compact diagnostic summary:
+
+```powershell
+python -m reserve_pay_optimizer simulate-mobility `
+  --count 10000 `
+  --seed 42 `
+  --customer-pool-size 1000 `
+  --output simulated_transactions.json
+```
+
+Omit `--output` to emit the complete dataset to standard output. The default count is 100, so the CLI does not print 10,000 records unless explicitly requested.
+
+Evaluate the generated file without conversion:
+
+```powershell
+python -m reserve_pay_optimizer evaluate-baselines `
+  --file simulated_transactions.json
+```
+
+Optional `--start-datetime` and `--end-datetime` values must be timezone-aware RFC 3339 timestamps. Simulator defaults cover calendar year 2026 in India Standard Time.
+
+### Small generated record
+
+For `--count 2 --seed 7`, the first record is:
+
+```json
+{
+  "transaction": {
+    "transaction_id": "SIM-000001",
+    "customer_id": "C0003",
+    "estimated_amount_paise": 26840,
+    "city": "bengaluru",
+    "distance_km": 11.4,
+    "estimated_duration_minutes": 29,
+    "surge_multiplier": 1.0,
+    "timestamp": "2026-02-28T14:00:58+05:30"
+  },
+  "outcome": {
+    "transaction_id": "SIM-000001",
+    "actual_amount_paise": 28981,
+    "completed_at": "2026-02-28T14:33:58+05:30"
+  }
+}
 ```
 
 ### Evaluation input contract
@@ -237,15 +377,15 @@ The same three transaction IDs and total actual amount are used for each strateg
 python -m unittest discover -s tests -v
 ```
 
-The suite covers every Phase 1 invariant plus exact-estimate decisions, fixed-buffer configuration and ceiling boundaries, small/large amounts, overflow, decision/outcome leakage protection, transaction evaluation, equality, aggregation formulas, metric precision, fair comparison, ID integrity, and separated JSON parsing.
+The suite covers every Phase 1 invariant plus Phase 2 strategies/evaluation and Phase 3 configuration validation, seed reproducibility, IDs, repeated customers, city selection, domain validity, safe money, temporal bounds, non-degenerate distributions, diagnostics, leakage protection, and direct Phase 2 integration.
 
 ## Explicitly not implemented
 
-Phase 2 is only the measurement framework for a future optimizer. It does not contain:
+Phase 3 generates data but does not learn from it or optimize reserve amounts. The project does not contain:
 
-- a transaction simulator or random fixture generation;
-- city volatility or traffic-variance rules;
+- production data or claims that synthetic city profiles are measured statistics;
 - XGBoost, LightGBM, quantile regression, or other ML;
+- scikit-learn, model training, train/test splits, or model persistence;
 - probability distributions or predicted final amounts;
 - an optimized reserve amount or block search;
 - risk profiles or customer personalization;
@@ -255,6 +395,6 @@ Phase 2 is only the measurement framework for a future optimizer. It does not co
 - a frontend or dashboard;
 - production backtesting data.
 
-## What remains for Phase 3
+## What remains for Phase 4
 
-Phase 3 may generate a realistic, reproducible transaction dataset and feed it into the existing comparison service. It must keep outcome generation separate from decision-time contexts and must not add prediction or optimization logic reserved for later phases.
+Phase 4 may build a learned final-fare or conditional-distribution prediction engine using exported decision-time features and outcomes. It must keep simulator-only latent variables out of features, use proper train/test separation, and leave optimal reserve search for Phase 5.

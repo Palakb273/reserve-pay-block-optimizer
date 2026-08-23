@@ -118,11 +118,17 @@ def parse_evaluation_dataset(
             [ValidationIssue("$", "invalid_type", "Dataset must be a JSON object.")]
         )
     issues: list[ValidationIssue] = []
-    for field in sorted(set(payload) - {"records"}):
+    for field in sorted(set(payload) - {"metadata", "records"}):
         issues.append(
             ValidationIssue(field, "unknown_field", f"Unknown dataset field: {field}.")
         )
     records = payload.get("records")
+    if "metadata" in payload and not isinstance(payload["metadata"], Mapping):
+        issues.append(
+            ValidationIssue(
+                "metadata", "invalid_type", "metadata must be a JSON object."
+            )
+        )
     if "records" not in payload:
         issues.append(ValidationIssue("records", "required", "records is required."))
     elif not isinstance(records, Sequence) or isinstance(records, (str, bytes)):
@@ -187,4 +193,3 @@ def parse_evaluation_dataset(
     if issues:
         raise DomainValidationError(issues)
     return tuple(transactions), tuple(outcomes)
-

@@ -4,8 +4,8 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "reserve-pay-block-optimizer"
-version = "0.2.0"
-description = "India-first mobility reserve baselines and evaluation framework"
+version = "0.3.0"
+description = "Deterministic India mobility simulation and reserve baseline evaluation"
 readme = "README.md"
 requires-python = ">=3.11"
 dependencies = []
