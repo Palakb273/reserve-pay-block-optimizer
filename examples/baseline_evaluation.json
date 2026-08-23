@@ -1,0 +1,55 @@
+{
+  "records": [
+    {
+      "transaction": {
+        "transaction_id": "TXN-001",
+        "customer_id": "C001",
+        "estimated_amount_paise": 65000,
+        "city": "hyderabad",
+        "distance_km": 18.4,
+        "estimated_duration_minutes": 42,
+        "surge_multiplier": 1.18,
+        "timestamp": "2026-08-23T18:30:00+05:30"
+      },
+      "outcome": {
+        "transaction_id": "TXN-001",
+        "actual_amount_paise": 62000,
+        "completed_at": "2026-08-23T19:20:00+05:30"
+      }
+    },
+    {
+      "transaction": {
+        "transaction_id": "TXN-002",
+        "customer_id": "C002",
+        "estimated_amount_paise": 65000,
+        "city": "mumbai",
+        "distance_km": 15.0,
+        "estimated_duration_minutes": 38,
+        "surge_multiplier": 1.0,
+        "timestamp": "2026-08-23T17:00:00+05:30"
+      },
+      "outcome": {
+        "transaction_id": "TXN-002",
+        "actual_amount_paise": 71000,
+        "completed_at": "2026-08-23T17:55:00+05:30"
+      }
+    },
+    {
+      "transaction": {
+        "transaction_id": "TXN-003",
+        "customer_id": "C003",
+        "estimated_amount_paise": 50000,
+        "city": "bengaluru",
+        "distance_km": 12.3,
+        "estimated_duration_minutes": 50,
+        "surge_multiplier": 1.1,
+        "timestamp": "2026-08-23T19:15:00+05:30"
+      },
+      "outcome": {
+        "transaction_id": "TXN-003",
+        "actual_amount_paise": 64000,
+        "completed_at": "2026-08-23T20:20:00+05:30"
+      }
+    }
+  ]
+}

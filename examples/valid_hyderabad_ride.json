@@ -1,0 +1,11 @@
+{
+  "transaction_id": "TXN-10001",
+  "customer_id": "C1042",
+  "estimated_amount_paise": 65000,
+  "city": "hyderabad",
+  "distance_km": 18.4,
+  "estimated_duration_minutes": 42,
+  "surge_multiplier": 1.18,
+  "timestamp": "2026-08-23T18:30:00+05:30"
+}
+

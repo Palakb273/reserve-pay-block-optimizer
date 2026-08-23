@@ -1,0 +1,11 @@
+{
+  "transaction_id": "",
+  "customer_id": "C1042",
+  "estimated_amount_paise": -100,
+  "city": "jaipur",
+  "distance_km": -2.5,
+  "estimated_duration_minutes": -10,
+  "surge_multiplier": 0,
+  "timestamp": "2026-08-23T18:30:00+05:30"
+}
+

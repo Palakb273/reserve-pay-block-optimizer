@@ -1,0 +1,17 @@
+[build-system]
+requires = ["setuptools>=68", "wheel>=0.43"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "reserve-pay-block-optimizer"
+version = "0.2.0"
+description = "India-first mobility reserve baselines and evaluation framework"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = []
+
+[project.scripts]
+reserve-pay-optimizer = "reserve_pay_optimizer.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
