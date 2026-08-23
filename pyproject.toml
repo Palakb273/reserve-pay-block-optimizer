@@ -4,11 +4,11 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "reserve-pay-block-optimizer"
-version = "0.3.0"
-description = "Deterministic India mobility simulation and reserve baseline evaluation"
+version = "0.4.0"
+description = "Conditional fare-distribution prediction for India mobility payments"
 readme = "README.md"
 requires-python = ">=3.11"
-dependencies = []
+dependencies = ["scikit-learn>=1.4,<2"]
 
 [project.scripts]
 reserve-pay-optimizer = "reserve_pay_optimizer.cli:main"

@@ -1,0 +1,602 @@
+{
+  "test": {
+    "comparison": {
+      "mean_absolute_calibration_error": {
+        "conditional_model": "0.007067",
+        "global_quantile_baseline": "0.007400"
+      },
+      "mean_pinball_loss_improvement_paise": "8.095389"
+    },
+    "conditional_model": {
+      "mean_pinball_loss_paise": "246.207289",
+      "median_mae_paise": "1080.418667",
+      "per_city": {
+        "bengaluru": {
+          "mean_pinball_loss_paise": "431.875935",
+          "q90_coverage": "0.861751",
+          "q95_coverage": "0.907834",
+          "q97_coverage": "0.963134",
+          "q99_coverage": "0.986175",
+          "test_record_count": 217
+        },
+        "chennai": {
+          "mean_pinball_loss_paise": "220.259960",
+          "q90_coverage": "0.911504",
+          "q95_coverage": "0.964602",
+          "q97_coverage": "0.982301",
+          "q99_coverage": "1.000000",
+          "test_record_count": 226
+        },
+        "delhi": {
+          "mean_pinball_loss_paise": "207.423739",
+          "q90_coverage": "0.924623",
+          "q95_coverage": "0.959799",
+          "q97_coverage": "0.979899",
+          "q99_coverage": "0.994975",
+          "test_record_count": 199
+        },
+        "hyderabad": {
+          "mean_pinball_loss_paise": "202.572230",
+          "q90_coverage": "0.915929",
+          "q95_coverage": "0.977876",
+          "q97_coverage": "0.986726",
+          "q99_coverage": "1.000000",
+          "test_record_count": 226
+        },
+        "kolkata": {
+          "mean_pinball_loss_paise": "235.450123",
+          "q90_coverage": "0.886256",
+          "q95_coverage": "0.919431",
+          "q97_coverage": "0.933649",
+          "q99_coverage": "0.976303",
+          "test_record_count": 211
+        },
+        "mumbai": {
+          "mean_pinball_loss_paise": "241.417772",
+          "q90_coverage": "0.885870",
+          "q95_coverage": "0.961957",
+          "q97_coverage": "0.978261",
+          "q99_coverage": "0.989130",
+          "test_record_count": 184
+        },
+        "pune": {
+          "mean_pinball_loss_paise": "188.420300",
+          "q90_coverage": "0.886076",
+          "q95_coverage": "0.953586",
+          "q97_coverage": "0.974684",
+          "q99_coverage": "1.000000",
+          "test_record_count": 237
+        }
+      },
+      "prediction_interval_q05_q95": {
+        "average_width_paise": "4420.361333",
+        "empirical_coverage": "0.908667",
+        "nominal_coverage": "0.900000"
+      },
+      "quantiles": {
+        "0.05": {
+          "absolute_calibration_error": "0.009333",
+          "calibration_error": "-0.009333",
+          "observed_coverage": "0.040667",
+          "pinball_loss_paise": "133.033700",
+          "target_coverage": "0.050000"
+        },
+        "0.10": {
+          "absolute_calibration_error": "0.015333",
+          "calibration_error": "-0.015333",
+          "observed_coverage": "0.084667",
+          "pinball_loss_paise": "230.057933",
+          "target_coverage": "0.100000"
+        },
+        "0.25": {
+          "absolute_calibration_error": "0.009333",
+          "calibration_error": "-0.009333",
+          "observed_coverage": "0.240667",
+          "pinball_loss_paise": "418.672167",
+          "target_coverage": "0.250000"
+        },
+        "0.50": {
+          "absolute_calibration_error": "0.020000",
+          "calibration_error": "-0.020000",
+          "observed_coverage": "0.480000",
+          "pinball_loss_paise": "540.209333",
+          "target_coverage": "0.500000"
+        },
+        "0.75": {
+          "absolute_calibration_error": "0.002000",
+          "calibration_error": "0.002000",
+          "observed_coverage": "0.752000",
+          "pinball_loss_paise": "434.647000",
+          "target_coverage": "0.750000"
+        },
+        "0.90": {
+          "absolute_calibration_error": "0.004000",
+          "calibration_error": "-0.004000",
+          "observed_coverage": "0.896000",
+          "pinball_loss_paise": "241.519667",
+          "target_coverage": "0.900000"
+        },
+        "0.93": {
+          "absolute_calibration_error": "0.006000",
+          "calibration_error": "-0.006000",
+          "observed_coverage": "0.924000",
+          "pinball_loss_paise": "186.395727",
+          "target_coverage": "0.930000"
+        },
+        "0.95": {
+          "absolute_calibration_error": "0.000667",
+          "calibration_error": "-0.000667",
+          "observed_coverage": "0.949333",
+          "pinball_loss_paise": "143.059033",
+          "target_coverage": "0.950000"
+        },
+        "0.97": {
+          "absolute_calibration_error": "0.001333",
+          "calibration_error": "0.001333",
+          "observed_coverage": "0.971333",
+          "pinball_loss_paise": "94.788120",
+          "target_coverage": "0.970000"
+        },
+        "0.99": {
+          "absolute_calibration_error": "0.002667",
+          "calibration_error": "0.002667",
+          "observed_coverage": "0.992667",
+          "pinball_loss_paise": "39.690213",
+          "target_coverage": "0.990000"
+        }
+      },
+      "raw_quantile_crossing": {
+        "adjacent_pair_count": 45,
+        "record_count": 43,
+        "record_frequency": "0.028667"
+      },
+      "record_count": 1500
+    },
+    "global_quantile_baseline": {
+      "mean_pinball_loss_paise": "254.302678",
+      "median_mae_paise": "1077.361333",
+      "per_city": {
+        "bengaluru": {
+          "mean_pinball_loss_paise": "476.863129",
+          "q90_coverage": "0.806452",
+          "q95_coverage": "0.870968",
+          "q97_coverage": "0.894009",
+          "q99_coverage": "0.949309",
+          "test_record_count": 217
+        },
+        "chennai": {
+          "mean_pinball_loss_paise": "223.711960",
+          "q90_coverage": "0.933628",
+          "q95_coverage": "0.955752",
+          "q97_coverage": "0.982301",
+          "q99_coverage": "1.000000",
+          "test_record_count": 226
+        },
+        "delhi": {
+          "mean_pinball_loss_paise": "210.945965",
+          "q90_coverage": "0.934673",
+          "q95_coverage": "0.979899",
+          "q97_coverage": "0.989950",
+          "q99_coverage": "0.994975",
+          "test_record_count": 199
+        },
+        "hyderabad": {
+          "mean_pinball_loss_paise": "207.251673",
+          "q90_coverage": "0.929204",
+          "q95_coverage": "0.982301",
+          "q97_coverage": "0.991150",
+          "q99_coverage": "1.000000",
+          "test_record_count": 226
+        },
+        "kolkata": {
+          "mean_pinball_loss_paise": "232.258365",
+          "q90_coverage": "0.886256",
+          "q95_coverage": "0.938389",
+          "q97_coverage": "0.957346",
+          "q99_coverage": "0.981043",
+          "test_record_count": 211
+        },
+        "mumbai": {
+          "mean_pinball_loss_paise": "240.814125",
+          "q90_coverage": "0.896739",
+          "q95_coverage": "0.945652",
+          "q97_coverage": "0.983696",
+          "q99_coverage": "0.989130",
+          "test_record_count": 184
+        },
+        "pune": {
+          "mean_pinball_loss_paise": "191.064878",
+          "q90_coverage": "0.915612",
+          "q95_coverage": "0.970464",
+          "q97_coverage": "0.978903",
+          "q99_coverage": "1.000000",
+          "test_record_count": 237
+        }
+      },
+      "prediction_interval_q05_q95": {
+        "average_width_paise": "4412.570000",
+        "empirical_coverage": "0.913333",
+        "nominal_coverage": "0.900000"
+      },
+      "quantiles": {
+        "0.05": {
+          "absolute_calibration_error": "0.014000",
+          "calibration_error": "-0.014000",
+          "observed_coverage": "0.036000",
+          "pinball_loss_paise": "137.531167",
+          "target_coverage": "0.050000"
+        },
+        "0.10": {
+          "absolute_calibration_error": "0.016667",
+          "calibration_error": "-0.016667",
+          "observed_coverage": "0.083333",
+          "pinball_loss_paise": "231.837933",
+          "target_coverage": "0.100000"
+        },
+        "0.25": {
+          "absolute_calibration_error": "0.019333",
+          "calibration_error": "-0.019333",
+          "observed_coverage": "0.230667",
+          "pinball_loss_paise": "419.284667",
+          "target_coverage": "0.250000"
+        },
+        "0.50": {
+          "absolute_calibration_error": "0.014000",
+          "calibration_error": "-0.014000",
+          "observed_coverage": "0.486000",
+          "pinball_loss_paise": "538.680667",
+          "target_coverage": "0.500000"
+        },
+        "0.75": {
+          "absolute_calibration_error": "0.004000",
+          "calibration_error": "0.004000",
+          "observed_coverage": "0.754000",
+          "pinball_loss_paise": "441.352000",
+          "target_coverage": "0.750000"
+        },
+        "0.90": {
+          "absolute_calibration_error": "0.000667",
+          "calibration_error": "0.000667",
+          "observed_coverage": "0.900667",
+          "pinball_loss_paise": "257.322867",
+          "target_coverage": "0.900000"
+        },
+        "0.93": {
+          "absolute_calibration_error": "0.000667",
+          "calibration_error": "0.000667",
+          "observed_coverage": "0.930667",
+          "pinball_loss_paise": "202.063087",
+          "target_coverage": "0.930000"
+        },
+        "0.95": {
+          "absolute_calibration_error": "0.000667",
+          "calibration_error": "-0.000667",
+          "observed_coverage": "0.949333",
+          "pinball_loss_paise": "159.574000",
+          "target_coverage": "0.950000"
+        },
+        "0.97": {
+          "absolute_calibration_error": "0.002000",
+          "calibration_error": "-0.002000",
+          "observed_coverage": "0.968000",
+          "pinball_loss_paise": "110.029293",
+          "target_coverage": "0.970000"
+        },
+        "0.99": {
+          "absolute_calibration_error": "0.002000",
+          "calibration_error": "-0.002000",
+          "observed_coverage": "0.988000",
+          "pinball_loss_paise": "45.351100",
+          "target_coverage": "0.990000"
+        }
+      },
+      "raw_quantile_crossing": {
+        "adjacent_pair_count": 0,
+        "record_count": 0,
+        "record_frequency": "0.000000"
+      },
+      "record_count": 1500
+    },
+    "test_records": 1500
+  },
+  "validation": {
+    "comparison": {
+      "mean_absolute_calibration_error": {
+        "conditional_model": "0.003200",
+        "global_quantile_baseline": "0.004000"
+      },
+      "mean_pinball_loss_improvement_paise": "5.805921"
+    },
+    "conditional_model": {
+      "mean_pinball_loss_paise": "251.171605",
+      "median_mae_paise": "1094.668667",
+      "per_city": {
+        "bengaluru": {
+          "mean_pinball_loss_paise": "445.018643",
+          "q90_coverage": "0.866667",
+          "q95_coverage": "0.914286",
+          "q97_coverage": "0.961905",
+          "q99_coverage": "0.980952",
+          "test_record_count": 210
+        },
+        "chennai": {
+          "mean_pinball_loss_paise": "215.507059",
+          "q90_coverage": "0.894958",
+          "q95_coverage": "0.949580",
+          "q97_coverage": "0.970588",
+          "q99_coverage": "0.991597",
+          "test_record_count": 238
+        },
+        "delhi": {
+          "mean_pinball_loss_paise": "214.297665",
+          "q90_coverage": "0.934010",
+          "q95_coverage": "0.959391",
+          "q97_coverage": "0.974619",
+          "q99_coverage": "0.989848",
+          "test_record_count": 197
+        },
+        "hyderabad": {
+          "mean_pinball_loss_paise": "237.508743",
+          "q90_coverage": "0.905405",
+          "q95_coverage": "0.950450",
+          "q97_coverage": "0.968468",
+          "q99_coverage": "0.986486",
+          "test_record_count": 222
+        },
+        "kolkata": {
+          "mean_pinball_loss_paise": "184.742883",
+          "q90_coverage": "0.936585",
+          "q95_coverage": "0.965854",
+          "q97_coverage": "0.980488",
+          "q99_coverage": "0.995122",
+          "test_record_count": 205
+        },
+        "mumbai": {
+          "mean_pinball_loss_paise": "269.802449",
+          "q90_coverage": "0.893519",
+          "q95_coverage": "0.935185",
+          "q97_coverage": "0.958333",
+          "q99_coverage": "0.986111",
+          "test_record_count": 216
+        },
+        "pune": {
+          "mean_pinball_loss_paise": "193.017038",
+          "q90_coverage": "0.919811",
+          "q95_coverage": "0.966981",
+          "q97_coverage": "0.976415",
+          "q99_coverage": "0.985849",
+          "test_record_count": 212
+        }
+      },
+      "prediction_interval_q05_q95": {
+        "average_width_paise": "4361.094000",
+        "empirical_coverage": "0.898667",
+        "nominal_coverage": "0.900000"
+      },
+      "quantiles": {
+        "0.05": {
+          "absolute_calibration_error": "0.000000",
+          "calibration_error": "0.000000",
+          "observed_coverage": "0.050000",
+          "pinball_loss_paise": "144.263233",
+          "target_coverage": "0.050000"
+        },
+        "0.10": {
+          "absolute_calibration_error": "0.004667",
+          "calibration_error": "-0.004667",
+          "observed_coverage": "0.095333",
+          "pinball_loss_paise": "240.649267",
+          "target_coverage": "0.100000"
+        },
+        "0.25": {
+          "absolute_calibration_error": "0.006667",
+          "calibration_error": "0.006667",
+          "observed_coverage": "0.256667",
+          "pinball_loss_paise": "429.751667",
+          "target_coverage": "0.250000"
+        },
+        "0.50": {
+          "absolute_calibration_error": "0.005333",
+          "calibration_error": "0.005333",
+          "observed_coverage": "0.505333",
+          "pinball_loss_paise": "547.334333",
+          "target_coverage": "0.500000"
+        },
+        "0.75": {
+          "absolute_calibration_error": "0.004667",
+          "calibration_error": "0.004667",
+          "observed_coverage": "0.754667",
+          "pinball_loss_paise": "438.284167",
+          "target_coverage": "0.750000"
+        },
+        "0.90": {
+          "absolute_calibration_error": "0.006667",
+          "calibration_error": "0.006667",
+          "observed_coverage": "0.906667",
+          "pinball_loss_paise": "245.212133",
+          "target_coverage": "0.900000"
+        },
+        "0.93": {
+          "absolute_calibration_error": "0.000667",
+          "calibration_error": "-0.000667",
+          "observed_coverage": "0.929333",
+          "pinball_loss_paise": "186.886847",
+          "target_coverage": "0.930000"
+        },
+        "0.95": {
+          "absolute_calibration_error": "0.001333",
+          "calibration_error": "-0.001333",
+          "observed_coverage": "0.948667",
+          "pinball_loss_paise": "144.511467",
+          "target_coverage": "0.950000"
+        },
+        "0.97": {
+          "absolute_calibration_error": "0.000000",
+          "calibration_error": "0.000000",
+          "observed_coverage": "0.970000",
+          "pinball_loss_paise": "96.443840",
+          "target_coverage": "0.970000"
+        },
+        "0.99": {
+          "absolute_calibration_error": "0.002000",
+          "calibration_error": "-0.002000",
+          "observed_coverage": "0.988000",
+          "pinball_loss_paise": "38.379100",
+          "target_coverage": "0.990000"
+        }
+      },
+      "raw_quantile_crossing": {
+        "adjacent_pair_count": 63,
+        "record_count": 61,
+        "record_frequency": "0.040667"
+      },
+      "record_count": 1500
+    },
+    "global_quantile_baseline": {
+      "mean_pinball_loss_paise": "256.977527",
+      "median_mae_paise": "1096.200667",
+      "per_city": {
+        "bengaluru": {
+          "mean_pinball_loss_paise": "468.193457",
+          "q90_coverage": "0.809524",
+          "q95_coverage": "0.857143",
+          "q97_coverage": "0.895238",
+          "q99_coverage": "0.966667",
+          "test_record_count": 210
+        },
+        "chennai": {
+          "mean_pinball_loss_paise": "220.040819",
+          "q90_coverage": "0.911765",
+          "q95_coverage": "0.962185",
+          "q97_coverage": "0.974790",
+          "q99_coverage": "0.995798",
+          "test_record_count": 238
+        },
+        "delhi": {
+          "mean_pinball_loss_paise": "217.703381",
+          "q90_coverage": "0.949239",
+          "q95_coverage": "0.974619",
+          "q97_coverage": "0.984772",
+          "q99_coverage": "1.000000",
+          "test_record_count": 197
+        },
+        "hyderabad": {
+          "mean_pinball_loss_paise": "237.819613",
+          "q90_coverage": "0.923423",
+          "q95_coverage": "0.954955",
+          "q97_coverage": "0.981982",
+          "q99_coverage": "0.990991",
+          "test_record_count": 222
+        },
+        "kolkata": {
+          "mean_pinball_loss_paise": "186.193078",
+          "q90_coverage": "0.936585",
+          "q95_coverage": "0.970732",
+          "q97_coverage": "0.985366",
+          "q99_coverage": "1.000000",
+          "test_record_count": 205
+        },
+        "mumbai": {
+          "mean_pinball_loss_paise": "274.016190",
+          "q90_coverage": "0.884259",
+          "q95_coverage": "0.944444",
+          "q97_coverage": "0.972222",
+          "q99_coverage": "0.986111",
+          "test_record_count": 216
+        },
+        "pune": {
+          "mean_pinball_loss_paise": "196.864863",
+          "q90_coverage": "0.943396",
+          "q95_coverage": "0.971698",
+          "q97_coverage": "0.976415",
+          "q99_coverage": "0.990566",
+          "test_record_count": 212
+        }
+      },
+      "prediction_interval_q05_q95": {
+        "average_width_paise": "4367.416667",
+        "empirical_coverage": "0.897333",
+        "nominal_coverage": "0.900000"
+      },
+      "quantiles": {
+        "0.05": {
+          "absolute_calibration_error": "0.001333",
+          "calibration_error": "0.001333",
+          "observed_coverage": "0.051333",
+          "pinball_loss_paise": "152.590900",
+          "target_coverage": "0.050000"
+        },
+        "0.10": {
+          "absolute_calibration_error": "0.008000",
+          "calibration_error": "-0.008000",
+          "observed_coverage": "0.092000",
+          "pinball_loss_paise": "247.500200",
+          "target_coverage": "0.100000"
+        },
+        "0.25": {
+          "absolute_calibration_error": "0.006000",
+          "calibration_error": "0.006000",
+          "observed_coverage": "0.256000",
+          "pinball_loss_paise": "433.349167",
+          "target_coverage": "0.250000"
+        },
+        "0.50": {
+          "absolute_calibration_error": "0.000667",
+          "calibration_error": "-0.000667",
+          "observed_coverage": "0.499333",
+          "pinball_loss_paise": "548.100333",
+          "target_coverage": "0.500000"
+        },
+        "0.75": {
+          "absolute_calibration_error": "0.010000",
+          "calibration_error": "0.010000",
+          "observed_coverage": "0.760000",
+          "pinball_loss_paise": "442.404167",
+          "target_coverage": "0.750000"
+        },
+        "0.90": {
+          "absolute_calibration_error": "0.008000",
+          "calibration_error": "0.008000",
+          "observed_coverage": "0.908000",
+          "pinball_loss_paise": "253.609333",
+          "target_coverage": "0.900000"
+        },
+        "0.93": {
+          "absolute_calibration_error": "0.001333",
+          "calibration_error": "-0.001333",
+          "observed_coverage": "0.928667",
+          "pinball_loss_paise": "197.420427",
+          "target_coverage": "0.930000"
+        },
+        "0.95": {
+          "absolute_calibration_error": "0.002000",
+          "calibration_error": "-0.002000",
+          "observed_coverage": "0.948000",
+          "pinball_loss_paise": "152.491267",
+          "target_coverage": "0.950000"
+        },
+        "0.97": {
+          "absolute_calibration_error": "0.002667",
+          "calibration_error": "-0.002667",
+          "observed_coverage": "0.967333",
+          "pinball_loss_paise": "101.802260",
+          "target_coverage": "0.970000"
+        },
+        "0.99": {
+          "absolute_calibration_error": "0.000000",
+          "calibration_error": "0.000000",
+          "observed_coverage": "0.990000",
+          "pinball_loss_paise": "40.507213",
+          "target_coverage": "0.990000"
+        }
+      },
+      "raw_quantile_crossing": {
+        "adjacent_pair_count": 0,
+        "record_count": 0,
+        "record_frequency": "0.000000"
+      },
+      "record_count": 1500
+    },
+    "test_records": 1500
+  }
+}

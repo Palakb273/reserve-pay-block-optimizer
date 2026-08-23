@@ -1,4 +1,4 @@
-"""Dependency-free command-line entry point."""
+"""Command-line workflows for domain, simulation, and prediction phases."""
 
 import argparse
 import json
@@ -10,9 +10,22 @@ from typing import Sequence, TextIO
 
 from reserve_pay_optimizer.config import MOBILITY_DOMAIN, SUPPORTED_CURRENCY
 from reserve_pay_optimizer.domain.errors import DomainValidationError, ValidationIssue
+from reserve_pay_optimizer.prediction.config import ModelConfig
+from reserve_pay_optimizer.prediction.dataset import (
+    build_prediction_records,
+    dataset_fingerprint,
+    split_records,
+)
+from reserve_pay_optimizer.prediction.evaluation import evaluate_predictor
+from reserve_pay_optimizer.prediction.persistence import (
+    load_predictor_artifact,
+    save_predictor_artifact,
+)
+from reserve_pay_optimizer.prediction.training import train_predictor
 from reserve_pay_optimizer.services.comparison import compare_strategies
 from reserve_pay_optimizer.services.evaluation_input import parse_evaluation_dataset
 from reserve_pay_optimizer.services.mobility_validation import (
+    parse_mobility_transaction,
     validate_mobility_transaction,
 )
 from reserve_pay_optimizer.simulation.config import SimulationConfig
@@ -66,6 +79,25 @@ def _parser() -> argparse.ArgumentParser:
         type=Path,
         help="write dataset JSON here; omit to write the dataset to standard output",
     )
+    train = subparsers.add_parser(
+        "train-predictor",
+        help="train Phase 4 conditional final-fare quantile models",
+    )
+    train.add_argument("--file", type=Path, required=True, help="simulation/evaluation dataset JSON")
+    train.add_argument("--seed", type=int, default=42)
+    train.add_argument("--output", type=Path, required=True, help="trusted project-local artifact directory")
+    evaluate_predictor_parser = subparsers.add_parser(
+        "evaluate-predictor",
+        help="evaluate a trusted Phase 4 artifact against completed records",
+    )
+    evaluate_predictor_parser.add_argument("--file", type=Path, required=True)
+    evaluate_predictor_parser.add_argument("--model", type=Path, required=True)
+    predict = subparsers.add_parser(
+        "predict-distribution",
+        help="predict monotonic final-fare quantiles for one ride context",
+    )
+    predict.add_argument("--model", type=Path, required=True)
+    predict.add_argument("--file", type=Path, required=True)
     return parser
 
 
@@ -116,6 +148,43 @@ def main(argv: Sequence[str] | None = None) -> int:
                     "transaction_count": metadata["transaction_count"],
                     "diagnostics": metadata["diagnostics"],
                 }
+        elif args.command in {"train-predictor", "evaluate-predictor"}:
+            with args.file.open("r", encoding="utf-8") as stream:
+                payload = _load_payload(stream)
+            transactions, outcomes = parse_evaluation_dataset(payload)  # type: ignore[arg-type]
+            if args.command == "train-predictor":
+                training = train_predictor(
+                    transactions,
+                    outcomes,
+                    ModelConfig(seed=args.seed),
+                )
+                save_predictor_artifact(training, args.output)
+                result = training.summary(str(args.output))
+            else:
+                artifact = load_predictor_artifact(args.model)
+                records = build_prediction_records(transactions, outcomes)
+                current_fingerprint = dataset_fingerprint(records, artifact.model.config)
+                expected_fingerprint = artifact.metadata["dataset_fingerprint_sha256"]
+                if current_fingerprint == expected_fingerprint:
+                    evaluation_records = split_records(records, artifact.model.config).test
+                    scope = "held_out_test_split"
+                else:
+                    evaluation_records = records
+                    scope = "external_all_records"
+                evaluation = evaluate_predictor(artifact.model, evaluation_records)
+                result = {
+                    "evaluation_status": "complete",
+                    "evaluation_scope": scope,
+                    "dataset_fingerprint_matches_training_input": current_fingerprint == expected_fingerprint,
+                    "model_version": artifact.model.model_version,
+                    **evaluation.to_dict(),
+                }
+        elif args.command == "predict-distribution":
+            artifact = load_predictor_artifact(args.model)
+            with args.file.open("r", encoding="utf-8") as stream:
+                payload = _load_payload(stream)
+            context = parse_mobility_transaction(payload)  # type: ignore[arg-type]
+            result = artifact.model.predict(context).to_dict()
         else:
             if args.file:
                 with args.file.open("r", encoding="utf-8") as stream:
@@ -124,7 +193,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                 payload = _load_payload(sys.stdin)
             if args.command == "validate-mobility":
                 result = validate_mobility_transaction(payload)  # type: ignore[arg-type]
-            else:
+            elif args.command == "evaluate-baselines":
                 transactions, outcomes = parse_evaluation_dataset(payload)  # type: ignore[arg-type]
                 comparison = compare_strategies(
                     transactions,
@@ -148,6 +217,9 @@ def main(argv: Sequence[str] | None = None) -> int:
         return 2
     except DomainValidationError as exc:
         print(json.dumps(_error_response(exc), indent=2, sort_keys=True))
+        return 2
+    except (OSError, ValueError, RuntimeError, KeyError) as exc:
+        print(json.dumps({"status": "error", "message": str(exc)}, indent=2, sort_keys=True))
         return 2
 
     print(json.dumps(result, indent=2, sort_keys=True))

@@ -1,4 +1,6 @@
-"""Reserve Pay Block Optimizer simulation and baseline evaluation package."""
+"""Reserve Pay Block Optimizer package."""
+
+__version__ = "0.4.0"
 
 from reserve_pay_optimizer.domain.errors import DomainValidationError, ValidationIssue
 from reserve_pay_optimizer.domain.evaluation import (
@@ -13,6 +15,9 @@ from reserve_pay_optimizer.domain.mobility import (
 from reserve_pay_optimizer.domain.money import Money
 from reserve_pay_optimizer.domain.reserve import ReserveDecision
 from reserve_pay_optimizer.domain.types import Currency, SupportedCity, TransactionDomain
+from reserve_pay_optimizer.prediction.config import MODEL_VERSION, ModelConfig
+from reserve_pay_optimizer.prediction.distribution import FareDistributionPrediction
+from reserve_pay_optimizer.prediction.model import ConditionalFareDistributionModel
 from reserve_pay_optimizer.services.mobility_validation import (
     validate_mobility_transaction,
 )
@@ -29,11 +34,15 @@ from reserve_pay_optimizer.strategies.fixed_buffer import FixedBufferStrategy
 __all__ = [
     "BaselineComparison",
     "Currency",
+    "ConditionalFareDistributionModel",
     "DomainValidationError",
     "ExactEstimateStrategy",
     "FareModelConfig",
+    "FareDistributionPrediction",
     "FixedBufferStrategy",
     "Money",
+    "MODEL_VERSION",
+    "ModelConfig",
     "RideTransactionContext",
     "RideTransactionOutcome",
     "ReserveDecision",
@@ -48,4 +57,5 @@ __all__ = [
     "ValidationIssue",
     "simulate_transactions",
     "validate_mobility_transaction",
+    "__version__",
 ]

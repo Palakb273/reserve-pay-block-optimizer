@@ -1,0 +1,47 @@
+{
+  "artifact_format_version": 1,
+  "dataset_fingerprint_sha256": "510aec15ba787fabe63422c7e23b2247e4993ca182f910052500d074b2a43a01",
+  "evaluation_summary_file": "evaluation_summary.json",
+  "feature_schema_file": "feature_schema.json",
+  "library_versions": {
+    "joblib": "1.5.3",
+    "numpy": "2.4.6",
+    "python": "3.11.3",
+    "scikit_learn": "1.9.0"
+  },
+  "loss": "quantile",
+  "model_config": {
+    "learning_rate": 0.05,
+    "max_depth": 3,
+    "min_samples_leaf": 10,
+    "n_estimators": 80,
+    "seed": 42,
+    "subsample": 1.0,
+    "test_fraction": "0.15",
+    "train_fraction": "0.70",
+    "validation_fraction": "0.15"
+  },
+  "model_type": "sklearn.ensemble.GradientBoostingRegressor",
+  "model_version": "fare_distribution_v1",
+  "prediction_amount_rounding": "ceiling_to_next_paise",
+  "project_version": "0.4.0",
+  "quantiles": [
+    "0.05",
+    "0.10",
+    "0.25",
+    "0.50",
+    "0.75",
+    "0.90",
+    "0.93",
+    "0.95",
+    "0.97",
+    "0.99"
+  ],
+  "split_counts": {
+    "test": 1500,
+    "train": 7000,
+    "validation": 1500
+  },
+  "target_definition": "fare_ratio=actual_amount_paise/estimated_amount_paise",
+  "trusted_sources_only": true
+}
