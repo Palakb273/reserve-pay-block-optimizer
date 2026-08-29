@@ -1,4 +1,4 @@
-"""Command-line workflows for domain, simulation, and prediction phases."""
+"""Command-line workflows for domain, simulation, prediction, and personalization."""
 
 import argparse
 import json
@@ -6,15 +6,30 @@ import sys
 from datetime import datetime
 from decimal import Decimal, InvalidOperation
 from pathlib import Path
+from collections.abc import Mapping
 from typing import Sequence, TextIO
 
 from reserve_pay_optimizer.config import MOBILITY_DOMAIN, SUPPORTED_CURRENCY
 from reserve_pay_optimizer.domain.errors import DomainValidationError, ValidationIssue
+from reserve_pay_optimizer.domain.evaluation import format_ratio
 from reserve_pay_optimizer.optimization.config import OptimizationConfig
 from reserve_pay_optimizer.optimization.optimizer import ReserveBlockOptimizer
 from reserve_pay_optimizer.policy.errors import PolicyTargetNotReachable
 from reserve_pay_optimizer.policy.optimizer import PolicyConstrainedOptimizer
 from reserve_pay_optimizer.policy.risk import ReserveRiskPolicy, RiskProfile, built_in_policies
+from reserve_pay_optimizer.personalization.dataset import (
+    build_personalized_records,
+    chronological_split,
+    personalized_dataset_fingerprint,
+)
+from reserve_pay_optimizer.personalization.evaluation import evaluate_personalization
+from reserve_pay_optimizer.personalization.history import InMemoryCustomerHistoryProvider
+from reserve_pay_optimizer.personalization.persistence import (
+    load_personalized_artifact,
+    save_personalized_artifact,
+)
+from reserve_pay_optimizer.personalization.predictor import PersonalizedFarePredictor
+from reserve_pay_optimizer.personalization.training import train_personalized_predictor
 from reserve_pay_optimizer.prediction.config import ModelConfig
 from reserve_pay_optimizer.prediction.dataset import (
     build_prediction_records,
@@ -109,6 +124,11 @@ def _parser() -> argparse.ArgumentParser:
     simulate.add_argument("--start-datetime", type=_datetime_argument)
     simulate.add_argument("--end-datetime", type=_datetime_argument)
     simulate.add_argument(
+        "--personalized-customer-behavior",
+        action="store_true",
+        help="opt into hidden deterministic synthetic customer behavior",
+    )
+    simulate.add_argument(
         "--output",
         type=Path,
         help="write dataset JSON here; omit to write the dataset to standard output",
@@ -166,6 +186,57 @@ def _parser() -> argparse.ArgumentParser:
     evaluate_profiles.add_argument("--model", type=Path, required=True)
     evaluate_profiles.add_argument("--file", type=Path, required=True)
     _add_optimization_arguments(evaluate_profiles)
+    train_personalized = subparsers.add_parser(
+        "train-personalized-predictor",
+        help="train Phase-7 quantile models using chronological customer history",
+    )
+    train_personalized.add_argument("--file", type=Path, required=True)
+    train_personalized.add_argument("--seed", type=int, default=42)
+    train_personalized.add_argument("--base-model", type=Path, required=True)
+    train_personalized.add_argument("--output", type=Path, required=True)
+    evaluate_personalized = subparsers.add_parser(
+        "evaluate-personalization",
+        help="compare base and personalized models on the chronological test set",
+    )
+    evaluate_personalized.add_argument("--file", type=Path, required=True)
+    evaluate_personalized.add_argument("--model", type=Path, required=True)
+    evaluate_personalized.add_argument("--base-model", type=Path, required=True)
+    predict_personalized = subparsers.add_parser(
+        "predict-personalized-distribution",
+        help="predict with automatically selected base/personalized mode",
+    )
+    predict_personalized.add_argument("--model", type=Path, required=True)
+    predict_personalized.add_argument("--base-model", type=Path, required=True)
+    predict_personalized.add_argument("--history", type=Path, required=True)
+    predict_personalized.add_argument("--file", type=Path, required=True)
+    optimize_personalized = subparsers.add_parser(
+        "optimize-personalized-block",
+        help="feed a history-aware distribution into the existing policy optimizer",
+    )
+    optimize_personalized.add_argument("--model", type=Path, required=True)
+    optimize_personalized.add_argument("--base-model", type=Path, required=True)
+    optimize_personalized.add_argument("--history", type=Path, required=True)
+    optimize_personalized.add_argument("--file", type=Path, required=True)
+    optimize_personalized.add_argument(
+        "--risk-profile",
+        choices=[profile.value for profile in RiskProfile],
+        default=RiskProfile.BALANCED.value,
+    )
+    optimize_personalized.add_argument("--verbose", action="store_true")
+    _add_optimization_arguments(optimize_personalized)
+    compare_customers = subparsers.add_parser(
+        "compare-customer-personalization",
+        help="compare two same-ride customer histories through prediction and policy",
+    )
+    compare_customers.add_argument("--model", type=Path, required=True)
+    compare_customers.add_argument("--base-model", type=Path, required=True)
+    compare_customers.add_argument("--scenario", type=Path, required=True)
+    compare_customers.add_argument(
+        "--risk-profile",
+        choices=[profile.value for profile in RiskProfile],
+        default=RiskProfile.BALANCED.value,
+    )
+    _add_optimization_arguments(compare_customers)
     return parser
 
 
@@ -192,6 +263,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                 "transaction_count": args.count,
                 "seed": args.seed,
                 "customer_pool_size": args.customer_pool_size,
+                "customer_behavior_enabled": args.personalized_customer_behavior,
             }
             if args.start_datetime is not None:
                 config_kwargs["start_datetime"] = args.start_datetime
@@ -214,8 +286,144 @@ def main(argv: Sequence[str] | None = None) -> int:
                     "generator": metadata["generator"],
                     "seed": metadata["seed"],
                     "transaction_count": metadata["transaction_count"],
+                    "customer_behavior_enabled": args.personalized_customer_behavior,
                     "diagnostics": metadata["diagnostics"],
                 }
+        elif args.command == "train-personalized-predictor":
+            with args.file.open("r", encoding="utf-8") as stream:
+                payload = _load_payload(stream)
+            transactions, outcomes = parse_evaluation_dataset(payload)  # type: ignore[arg-type]
+            base_artifact = load_predictor_artifact(args.base_model)
+            source_metadata = (
+                dict(payload["metadata"])
+                if isinstance(payload, Mapping)
+                and isinstance(payload.get("metadata"), Mapping)
+                else None
+            )
+            training = train_personalized_predictor(
+                transactions,
+                outcomes,
+                base_artifact.model,
+                ModelConfig(seed=args.seed),
+                source_metadata=source_metadata,
+            )
+            save_personalized_artifact(training, args.output)
+            result = training.summary(str(args.output))
+        elif args.command == "evaluate-personalization":
+            with args.file.open("r", encoding="utf-8") as stream:
+                payload = _load_payload(stream)
+            transactions, outcomes = parse_evaluation_dataset(payload)  # type: ignore[arg-type]
+            artifact = load_personalized_artifact(args.model)
+            base_artifact = load_predictor_artifact(args.base_model)
+            records = build_personalized_records(transactions, outcomes)
+            split = chronological_split(records, artifact.model.config)
+            fingerprint = personalized_dataset_fingerprint(records, artifact.model.config)
+            evaluation = evaluate_personalization(
+                artifact.model, base_artifact.model, split.test
+            )
+            result = {
+                "evaluation_status": "complete",
+                "evaluation_scope": "chronological_test_split",
+                "dataset_fingerprint_matches_training_input": (
+                    fingerprint == artifact.metadata["dataset_fingerprint_sha256"]
+                ),
+                "model_version": artifact.model.model_version,
+                **evaluation.to_dict(),
+            }
+        elif args.command in {
+            "predict-personalized-distribution",
+            "optimize-personalized-block",
+        }:
+            personalized_artifact = load_personalized_artifact(args.model)
+            base_artifact = load_predictor_artifact(args.base_model)
+            with args.history.open("r", encoding="utf-8") as stream:
+                history_payload = _load_payload(stream)
+            history_contexts, history_outcomes = parse_evaluation_dataset(history_payload)  # type: ignore[arg-type]
+            provider = InMemoryCustomerHistoryProvider(
+                history_contexts, history_outcomes
+            )
+            predictor = PersonalizedFarePredictor(
+                base_artifact.model, personalized_artifact.model, provider
+            )
+            with args.file.open("r", encoding="utf-8") as stream:
+                transaction_payload = _load_payload(stream)
+            context = parse_mobility_transaction(transaction_payload)  # type: ignore[arg-type]
+            prediction = predictor.predict(context)
+            if args.command == "predict-personalized-distribution":
+                result = prediction.to_dict()
+                if prediction.history_features is not None:
+                    result["history_features"] = prediction.history_features.to_dict()
+            else:
+                policy = ReserveRiskPolicy.for_profile(RiskProfile(args.risk_profile))
+                optimization = PolicyConstrainedOptimizer(
+                    ReserveBlockOptimizer(_optimization_config(args))
+                ).optimize(context, prediction, policy)
+                result = optimization.to_dict(include_candidates=args.verbose)
+                result.update(
+                    {
+                        "prediction_mode": prediction.prediction_mode,
+                        "history_count": prediction.history_count,
+                        "history_as_of": prediction.history_as_of.isoformat()
+                        if prediction.history_as_of
+                        else None,
+                        "history_features": prediction.history_features.to_dict()
+                        if prediction.history_features
+                        else None,
+                    }
+                )
+        elif args.command == "compare-customer-personalization":
+            personalized_artifact = load_personalized_artifact(args.model)
+            base_artifact = load_predictor_artifact(args.base_model)
+            with args.scenario.open("r", encoding="utf-8") as stream:
+                scenario = _load_payload(stream)
+            if not isinstance(scenario, Mapping) or not isinstance(
+                scenario.get("customers"), Sequence
+            ):
+                raise ValueError("scenario must contain a customers array")
+            policy = ReserveRiskPolicy.for_profile(RiskProfile(args.risk_profile))
+            optimizer = PolicyConstrainedOptimizer(
+                ReserveBlockOptimizer(_optimization_config(args))
+            )
+            customers: dict[str, object] = {}
+            for index, item in enumerate(scenario["customers"]):
+                if not isinstance(item, Mapping):
+                    raise ValueError(f"customers[{index}] must be an object")
+                label = str(item.get("label", f"customer_{index + 1}"))
+                context = parse_mobility_transaction(item.get("transaction"))  # type: ignore[arg-type]
+                history_contexts, history_outcomes = parse_evaluation_dataset(
+                    item.get("history")  # type: ignore[arg-type]
+                )
+                predictor = PersonalizedFarePredictor(
+                    base_artifact.model,
+                    personalized_artifact.model,
+                    InMemoryCustomerHistoryProvider(
+                        history_contexts, history_outcomes
+                    ),
+                )
+                prediction = predictor.predict(context)
+                optimization = optimizer.optimize(context, prediction, policy)
+                customers[label] = {
+                    "customer_id": context.customer_id,
+                    "prediction_mode": prediction.prediction_mode,
+                    "history": prediction.history_features.to_dict()
+                    if prediction.history_features
+                    else None,
+                    "q97_paise": prediction.amount_for_quantile("0.97").amount_paise,
+                    "q99_paise": prediction.amount_for_quantile("0.99").amount_paise,
+                    "recommended_block_paise": optimization.recommended_block.amount_paise,
+                    "estimated_collection_probability": format_ratio(
+                        optimization.estimated_collection_probability
+                    ),
+                    "objective_score": format_ratio(optimization.objective_score),
+                }
+            result = {
+                "comparison_status": "complete",
+                "risk_profile": policy.profile.value,
+                "target_collection_probability": format_ratio(
+                    policy.target_collection_probability
+                ),
+                "customers": customers,
+            }
         elif args.command in {"train-predictor", "evaluate-predictor"}:
             with args.file.open("r", encoding="utf-8") as stream:
                 payload = _load_payload(stream)

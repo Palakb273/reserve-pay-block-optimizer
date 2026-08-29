@@ -1,0 +1,12 @@
+{
+  "completion_rule": "completed_at < transaction.timestamp",
+  "customer_id_usage": "lookup_and_trace_only_not_model_feature",
+  "features": [
+    "customer_history_count",
+    "customer_mean_fare_ratio",
+    "customer_fare_ratio_stddev",
+    "customer_overrun_rate",
+    "customer_mean_positive_overrun_ratio"
+  ],
+  "minimum_personalization_history": 3
+}

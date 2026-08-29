@@ -1,0 +1,54 @@
+{
+  "customers": [
+    {
+      "label": "stable_history_customer",
+      "transaction": {
+        "transaction_id": "DEMO-STABLE-CURRENT",
+        "customer_id": "C-STABLE",
+        "estimated_amount_paise": 65000,
+        "city": "hyderabad",
+        "distance_km": 18.4,
+        "estimated_duration_minutes": 42,
+        "surge_multiplier": 1.18,
+        "timestamp": "2027-01-15T18:30:00+05:30"
+      },
+      "history": {
+        "records": [
+          {"transaction":{"transaction_id":"ST-01","customer_id":"C-STABLE","estimated_amount_paise":65000,"city":"hyderabad","distance_km":18.4,"estimated_duration_minutes":42,"surge_multiplier":1.18,"timestamp":"2026-12-01T10:00:00+05:30"},"outcome":{"transaction_id":"ST-01","actual_amount_paise":64675,"completed_at":"2026-12-01T10:50:00+05:30"}},
+          {"transaction":{"transaction_id":"ST-02","customer_id":"C-STABLE","estimated_amount_paise":65000,"city":"hyderabad","distance_km":18.4,"estimated_duration_minutes":42,"surge_multiplier":1.18,"timestamp":"2026-12-03T10:00:00+05:30"},"outcome":{"transaction_id":"ST-02","actual_amount_paise":65000,"completed_at":"2026-12-03T10:50:00+05:30"}},
+          {"transaction":{"transaction_id":"ST-03","customer_id":"C-STABLE","estimated_amount_paise":65000,"city":"hyderabad","distance_km":18.4,"estimated_duration_minutes":42,"surge_multiplier":1.18,"timestamp":"2026-12-05T10:00:00+05:30"},"outcome":{"transaction_id":"ST-03","actual_amount_paise":65325,"completed_at":"2026-12-05T10:50:00+05:30"}},
+          {"transaction":{"transaction_id":"ST-04","customer_id":"C-STABLE","estimated_amount_paise":65000,"city":"hyderabad","distance_km":18.4,"estimated_duration_minutes":42,"surge_multiplier":1.18,"timestamp":"2026-12-07T10:00:00+05:30"},"outcome":{"transaction_id":"ST-04","actual_amount_paise":64765,"completed_at":"2026-12-07T10:50:00+05:30"}},
+          {"transaction":{"transaction_id":"ST-05","customer_id":"C-STABLE","estimated_amount_paise":65000,"city":"hyderabad","distance_km":18.4,"estimated_duration_minutes":42,"surge_multiplier":1.18,"timestamp":"2026-12-09T10:00:00+05:30"},"outcome":{"transaction_id":"ST-05","actual_amount_paise":65260,"completed_at":"2026-12-09T10:50:00+05:30"}},
+          {"transaction":{"transaction_id":"ST-06","customer_id":"C-STABLE","estimated_amount_paise":65000,"city":"hyderabad","distance_km":18.4,"estimated_duration_minutes":42,"surge_multiplier":1.18,"timestamp":"2026-12-11T10:00:00+05:30"},"outcome":{"transaction_id":"ST-06","actual_amount_paise":64935,"completed_at":"2026-12-11T10:50:00+05:30"}},
+          {"transaction":{"transaction_id":"ST-07","customer_id":"C-STABLE","estimated_amount_paise":65000,"city":"hyderabad","distance_km":18.4,"estimated_duration_minutes":42,"surge_multiplier":1.18,"timestamp":"2026-12-13T10:00:00+05:30"},"outcome":{"transaction_id":"ST-07","actual_amount_paise":65130,"completed_at":"2026-12-13T10:50:00+05:30"}},
+          {"transaction":{"transaction_id":"ST-08","customer_id":"C-STABLE","estimated_amount_paise":65000,"city":"hyderabad","distance_km":18.4,"estimated_duration_minutes":42,"surge_multiplier":1.18,"timestamp":"2026-12-15T10:00:00+05:30"},"outcome":{"transaction_id":"ST-08","actual_amount_paise":64870,"completed_at":"2026-12-15T10:50:00+05:30"}}
+        ]
+      }
+    },
+    {
+      "label": "overrun_prone_history_customer",
+      "transaction": {
+        "transaction_id": "DEMO-OVERRUN-CURRENT",
+        "customer_id": "C-OVERRUN",
+        "estimated_amount_paise": 65000,
+        "city": "hyderabad",
+        "distance_km": 18.4,
+        "estimated_duration_minutes": 42,
+        "surge_multiplier": 1.18,
+        "timestamp": "2027-01-15T18:30:00+05:30"
+      },
+      "history": {
+        "records": [
+          {"transaction":{"transaction_id":"OV-01","customer_id":"C-OVERRUN","estimated_amount_paise":65000,"city":"hyderabad","distance_km":18.4,"estimated_duration_minutes":42,"surge_multiplier":1.18,"timestamp":"2026-12-01T10:00:00+05:30"},"outcome":{"transaction_id":"OV-01","actual_amount_paise":68900,"completed_at":"2026-12-01T10:50:00+05:30"}},
+          {"transaction":{"transaction_id":"OV-02","customer_id":"C-OVERRUN","estimated_amount_paise":65000,"city":"hyderabad","distance_km":18.4,"estimated_duration_minutes":42,"surge_multiplier":1.18,"timestamp":"2026-12-03T10:00:00+05:30"},"outcome":{"transaction_id":"OV-02","actual_amount_paise":71500,"completed_at":"2026-12-03T10:50:00+05:30"}},
+          {"transaction":{"transaction_id":"OV-03","customer_id":"C-OVERRUN","estimated_amount_paise":65000,"city":"hyderabad","distance_km":18.4,"estimated_duration_minutes":42,"surge_multiplier":1.18,"timestamp":"2026-12-05T10:00:00+05:30"},"outcome":{"transaction_id":"OV-03","actual_amount_paise":74750,"completed_at":"2026-12-05T10:50:00+05:30"}},
+          {"transaction":{"transaction_id":"OV-04","customer_id":"C-OVERRUN","estimated_amount_paise":65000,"city":"hyderabad","distance_km":18.4,"estimated_duration_minutes":42,"surge_multiplier":1.18,"timestamp":"2026-12-07T10:00:00+05:30"},"outcome":{"transaction_id":"OV-04","actual_amount_paise":78000,"completed_at":"2026-12-07T10:50:00+05:30"}},
+          {"transaction":{"transaction_id":"OV-05","customer_id":"C-OVERRUN","estimated_amount_paise":65000,"city":"hyderabad","distance_km":18.4,"estimated_duration_minutes":42,"surge_multiplier":1.18,"timestamp":"2026-12-09T10:00:00+05:30"},"outcome":{"transaction_id":"OV-05","actual_amount_paise":70200,"completed_at":"2026-12-09T10:50:00+05:30"}},
+          {"transaction":{"transaction_id":"OV-06","customer_id":"C-OVERRUN","estimated_amount_paise":65000,"city":"hyderabad","distance_km":18.4,"estimated_duration_minutes":42,"surge_multiplier":1.18,"timestamp":"2026-12-11T10:00:00+05:30"},"outcome":{"transaction_id":"OV-06","actual_amount_paise":76050,"completed_at":"2026-12-11T10:50:00+05:30"}},
+          {"transaction":{"transaction_id":"OV-07","customer_id":"C-OVERRUN","estimated_amount_paise":65000,"city":"hyderabad","distance_km":18.4,"estimated_duration_minutes":42,"surge_multiplier":1.18,"timestamp":"2026-12-13T10:00:00+05:30"},"outcome":{"transaction_id":"OV-07","actual_amount_paise":72800,"completed_at":"2026-12-13T10:50:00+05:30"}},
+          {"transaction":{"transaction_id":"OV-08","customer_id":"C-OVERRUN","estimated_amount_paise":65000,"city":"hyderabad","distance_km":18.4,"estimated_duration_minutes":42,"surge_multiplier":1.18,"timestamp":"2026-12-15T10:00:00+05:30"},"outcome":{"transaction_id":"OV-08","actual_amount_paise":74100,"completed_at":"2026-12-15T10:50:00+05:30"}}
+        ]
+      }
+    }
+  ]
+}

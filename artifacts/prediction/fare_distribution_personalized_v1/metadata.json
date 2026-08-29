@@ -1,0 +1,186 @@
+{
+  "artifact_format_version": 1,
+  "chronological_split_strategy": "transaction_timestamp_ascending_70_15_15",
+  "dataset_fingerprint_sha256": "9ead8e00a1c48e5c692df08afc3f4d403148aee0918e571af12f41ac8aa40847",
+  "evaluation_summary_file": "evaluation_summary.json",
+  "feature_schema_file": "feature_schema.json",
+  "history_feature_schema_file": "history_feature_schema.json",
+  "library_versions": {
+    "joblib": "1.5.3",
+    "numpy": "2.4.6",
+    "python": "3.11.3",
+    "scikit_learn": "1.9.0"
+  },
+  "loss": "quantile",
+  "minimum_personalization_history": 3,
+  "model_config": {
+    "learning_rate": 0.05,
+    "max_depth": 3,
+    "min_samples_leaf": 10,
+    "n_estimators": 80,
+    "seed": 42,
+    "subsample": 1.0,
+    "test_fraction": "0.15",
+    "train_fraction": "0.70",
+    "validation_fraction": "0.15"
+  },
+  "model_type": "sklearn.ensemble.GradientBoostingRegressor",
+  "model_version": "fare_distribution_personalized_v1",
+  "personalized_training_record_count": 10997,
+  "prediction_amount_rounding": "ceiling_to_next_paise",
+  "project_version": "0.7.0",
+  "quantiles": [
+    "0.05",
+    "0.10",
+    "0.25",
+    "0.50",
+    "0.75",
+    "0.90",
+    "0.93",
+    "0.95",
+    "0.97",
+    "0.99"
+  ],
+  "source_dataset_metadata": {
+    "city_profiles": [
+      {
+        "average_speed_kmph": "25.0",
+        "base_surge_probability": "0.09",
+        "basis": "synthetic_simulation_assumption",
+        "city": "delhi",
+        "distance_spread_km": "6.0",
+        "route_variation_ratio": "0.045",
+        "traffic_variation_ratio": "0.09",
+        "typical_distance_km": "10.0"
+      },
+      {
+        "average_speed_kmph": "22.0",
+        "base_surge_probability": "0.12",
+        "basis": "synthetic_simulation_assumption",
+        "city": "mumbai",
+        "distance_spread_km": "5.0",
+        "route_variation_ratio": "0.050",
+        "traffic_variation_ratio": "0.13",
+        "typical_distance_km": "9.0"
+      },
+      {
+        "average_speed_kmph": "20.0",
+        "base_surge_probability": "0.14",
+        "basis": "synthetic_simulation_assumption",
+        "city": "bengaluru",
+        "distance_spread_km": "7.0",
+        "route_variation_ratio": "0.060",
+        "traffic_variation_ratio": "0.16",
+        "typical_distance_km": "11.0"
+      },
+      {
+        "average_speed_kmph": "27.0",
+        "base_surge_probability": "0.10",
+        "basis": "synthetic_simulation_assumption",
+        "city": "hyderabad",
+        "distance_spread_km": "6.0",
+        "route_variation_ratio": "0.045",
+        "traffic_variation_ratio": "0.10",
+        "typical_distance_km": "10.0"
+      },
+      {
+        "average_speed_kmph": "25.0",
+        "base_surge_probability": "0.10",
+        "basis": "synthetic_simulation_assumption",
+        "city": "pune",
+        "distance_spread_km": "5.0",
+        "route_variation_ratio": "0.050",
+        "traffic_variation_ratio": "0.11",
+        "typical_distance_km": "8.0"
+      },
+      {
+        "average_speed_kmph": "26.0",
+        "base_surge_probability": "0.09",
+        "basis": "synthetic_simulation_assumption",
+        "city": "chennai",
+        "distance_spread_km": "6.0",
+        "route_variation_ratio": "0.045",
+        "traffic_variation_ratio": "0.10",
+        "typical_distance_km": "10.0"
+      },
+      {
+        "average_speed_kmph": "23.0",
+        "base_surge_probability": "0.10",
+        "basis": "synthetic_simulation_assumption",
+        "city": "kolkata",
+        "distance_spread_km": "5.0",
+        "route_variation_ratio": "0.050",
+        "traffic_variation_ratio": "0.12",
+        "typical_distance_km": "8.0"
+      }
+    ],
+    "city_weights": {
+      "bengaluru": 1,
+      "chennai": 1,
+      "delhi": 1,
+      "hyderabad": 1,
+      "kolkata": 1,
+      "mumbai": 1,
+      "pune": 1
+    },
+    "customer_behavior": {
+      "basis": "synthetic_personalization_assumption",
+      "derivation": "deterministic_sha256_seed_and_customer_id",
+      "enabled": true,
+      "hidden_from_exported_records_and_model_features": true,
+      "overrun_bias_range": [
+        "-0.035",
+        "0.090"
+      ],
+      "variance_multiplier_range": [
+        "0.65",
+        "1.60"
+      ]
+    },
+    "customer_pool_size": 1000,
+    "diagnostics": {
+      "actual_above_estimate_rate": "0.670350",
+      "actual_below_estimate_rate": "0.329450",
+      "actual_equal_estimate_rate": "0.000200",
+      "actual_near_estimate_rate": "0.226250",
+      "average_absolute_difference_paise": 1623,
+      "average_actual_amount_paise": 28491,
+      "average_estimated_amount_paise": 27667,
+      "city_counts": {
+        "bengaluru": 2833,
+        "chennai": 2858,
+        "delhi": 2835,
+        "hyderabad": 2909,
+        "kolkata": 2884,
+        "mumbai": 2805,
+        "pune": 2876
+      },
+      "near_estimate_ratio": "0.020000",
+      "surge_frequency": "0.121100",
+      "transaction_count": 20000,
+      "unique_customer_count": 1000
+    },
+    "end_datetime": "2026-12-31T23:59:59+05:30",
+    "fare_model": {
+      "base_fare_paise": 4500,
+      "distance_rate_paise_per_km": "1400",
+      "duration_rate_paise_per_minute": "220",
+      "maximum_distance_km": "40.0",
+      "maximum_surge_multiplier": "2.00",
+      "minimum_distance_km": "0.8",
+      "near_estimate_ratio": "0.02",
+      "pricing_noise_ratio": "0.0125"
+    },
+    "generator": "india_mobility_v1",
+    "seed": 202607,
+    "start_datetime": "2026-01-01T00:00:00+05:30",
+    "transaction_count": 20000
+  },
+  "split_counts": {
+    "test": 3000,
+    "train": 14000,
+    "validation": 3000
+  },
+  "target_definition": "fare_ratio=actual_amount_paise/estimated_amount_paise",
+  "trusted_sources_only": true
+}

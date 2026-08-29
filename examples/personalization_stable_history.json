@@ -1,0 +1,55 @@
+{
+  "records": [
+    {
+      "transaction": {
+        "transaction_id": "ST-01",
+        "customer_id": "C-STABLE",
+        "estimated_amount_paise": 65000,
+        "city": "hyderabad",
+        "distance_km": 18.4,
+        "estimated_duration_minutes": 42,
+        "surge_multiplier": 1.18,
+        "timestamp": "2026-12-01T10:00:00+05:30"
+      },
+      "outcome": {
+        "transaction_id": "ST-01",
+        "actual_amount_paise": 64675,
+        "completed_at": "2026-12-01T10:50:00+05:30"
+      }
+    },
+    {
+      "transaction": {
+        "transaction_id": "ST-02",
+        "customer_id": "C-STABLE",
+        "estimated_amount_paise": 65000,
+        "city": "hyderabad",
+        "distance_km": 18.4,
+        "estimated_duration_minutes": 42,
+        "surge_multiplier": 1.18,
+        "timestamp": "2026-12-03T10:00:00+05:30"
+      },
+      "outcome": {
+        "transaction_id": "ST-02",
+        "actual_amount_paise": 65000,
+        "completed_at": "2026-12-03T10:50:00+05:30"
+      }
+    },
+    {
+      "transaction": {
+        "transaction_id": "ST-03",
+        "customer_id": "C-STABLE",
+        "estimated_amount_paise": 65000,
+        "city": "hyderabad",
+        "distance_km": 18.4,
+        "estimated_duration_minutes": 42,
+        "surge_multiplier": 1.18,
+        "timestamp": "2026-12-05T10:00:00+05:30"
+      },
+      "outcome": {
+        "transaction_id": "ST-03",
+        "actual_amount_paise": 65325,
+        "completed_at": "2026-12-05T10:50:00+05:30"
+      }
+    }
+  ]
+}

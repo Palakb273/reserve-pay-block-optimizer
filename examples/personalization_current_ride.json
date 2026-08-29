@@ -1,0 +1,10 @@
+{
+  "transaction_id": "DEMO-STABLE-CURRENT",
+  "customer_id": "C-STABLE",
+  "estimated_amount_paise": 65000,
+  "city": "hyderabad",
+  "distance_km": 18.4,
+  "estimated_duration_minutes": 42,
+  "surge_multiplier": 1.18,
+  "timestamp": "2027-01-15T18:30:00+05:30"
+}

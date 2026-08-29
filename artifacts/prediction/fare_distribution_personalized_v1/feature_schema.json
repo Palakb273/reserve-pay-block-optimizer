@@ -1,0 +1,44 @@
+{
+  "features": [
+    "estimated_amount_paise",
+    "distance_km",
+    "estimated_duration_minutes",
+    "surge_multiplier",
+    "hour_sin",
+    "hour_cos",
+    "day_of_week",
+    "is_weekend",
+    "city_delhi",
+    "city_mumbai",
+    "city_bengaluru",
+    "city_hyderabad",
+    "city_pune",
+    "city_chennai",
+    "city_kolkata",
+    "customer_history_count",
+    "customer_mean_fare_ratio",
+    "customer_fare_ratio_stddev",
+    "customer_overrun_rate",
+    "customer_mean_positive_overrun_ratio"
+  ],
+  "forbidden_features": [
+    "actual_amount",
+    "actual_amount_paise",
+    "actual_distance",
+    "actual_duration",
+    "completed_at",
+    "customer_id",
+    "customer_overrun_bias",
+    "customer_variance_multiplier",
+    "outcome",
+    "pricing_noise",
+    "route_change",
+    "synthetic_customer_profile",
+    "traffic_change",
+    "transaction_id"
+  ],
+  "sources": [
+    "RideTransactionContext",
+    "CustomerHistoryFeatures"
+  ]
+}

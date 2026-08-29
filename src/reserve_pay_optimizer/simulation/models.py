@@ -99,60 +99,65 @@ class SimulationDataset:
             self.records, self.config.fare_model.near_estimate_ratio
         )
         fare = self.config.fare_model
+        metadata: dict[str, object] = {
+            "generator": GENERATOR_ID,
+            "seed": self.config.seed,
+            "transaction_count": self.config.transaction_count,
+            "customer_pool_size": self.config.customer_pool_size,
+            "start_datetime": self.config.start_datetime.isoformat(),
+            "end_datetime": self.config.end_datetime.isoformat(),
+            "city_weights": {
+                city.value: weight for city, weight in self.config.city_weights
+            },
+            "fare_model": {
+                "base_fare_paise": fare.base_fare_paise,
+                "distance_rate_paise_per_km": format(
+                    fare.distance_rate_paise_per_km, "f"
+                ),
+                "duration_rate_paise_per_minute": format(
+                    fare.duration_rate_paise_per_minute, "f"
+                ),
+                "minimum_distance_km": format(fare.minimum_distance_km, "f"),
+                "maximum_distance_km": format(fare.maximum_distance_km, "f"),
+                "maximum_surge_multiplier": format(
+                    fare.maximum_surge_multiplier, "f"
+                ),
+                "pricing_noise_ratio": format(fare.pricing_noise_ratio, "f"),
+                "near_estimate_ratio": format(fare.near_estimate_ratio, "f"),
+            },
+            "city_profiles": [
+                {
+                    "city": profile.city.value,
+                    "typical_distance_km": format(profile.typical_distance_km, "f"),
+                    "distance_spread_km": format(profile.distance_spread_km, "f"),
+                    "average_speed_kmph": format(profile.average_speed_kmph, "f"),
+                    "traffic_variation_ratio": format(
+                        profile.traffic_variation_ratio, "f"
+                    ),
+                    "route_variation_ratio": format(
+                        profile.route_variation_ratio, "f"
+                    ),
+                    "base_surge_probability": format(
+                        profile.base_surge_probability, "f"
+                    ),
+                    "basis": "synthetic_simulation_assumption",
+                }
+                for profile in self.config.city_profiles
+            ],
+            "diagnostics": diagnostics.to_dict(),
+        }
+        if self.config.customer_behavior_enabled:
+            metadata["customer_behavior"] = {
+                "enabled": True,
+                "basis": "synthetic_personalization_assumption",
+                "hidden_from_exported_records_and_model_features": True,
+                "overrun_bias_range": ["-0.035", "0.090"],
+                "variance_multiplier_range": ["0.65", "1.60"],
+                "derivation": "deterministic_sha256_seed_and_customer_id",
+            }
         return {
             "metadata": {
-                "generator": GENERATOR_ID,
-                "seed": self.config.seed,
-                "transaction_count": self.config.transaction_count,
-                "customer_pool_size": self.config.customer_pool_size,
-                "start_datetime": self.config.start_datetime.isoformat(),
-                "end_datetime": self.config.end_datetime.isoformat(),
-                "city_weights": {
-                    city.value: weight for city, weight in self.config.city_weights
-                },
-                "fare_model": {
-                    "base_fare_paise": fare.base_fare_paise,
-                    "distance_rate_paise_per_km": format(
-                        fare.distance_rate_paise_per_km, "f"
-                    ),
-                    "duration_rate_paise_per_minute": format(
-                        fare.duration_rate_paise_per_minute, "f"
-                    ),
-                    "minimum_distance_km": format(fare.minimum_distance_km, "f"),
-                    "maximum_distance_km": format(fare.maximum_distance_km, "f"),
-                    "maximum_surge_multiplier": format(
-                        fare.maximum_surge_multiplier, "f"
-                    ),
-                    "pricing_noise_ratio": format(fare.pricing_noise_ratio, "f"),
-                    "near_estimate_ratio": format(fare.near_estimate_ratio, "f"),
-                },
-                "city_profiles": [
-                    {
-                        "city": profile.city.value,
-                        "typical_distance_km": format(
-                            profile.typical_distance_km, "f"
-                        ),
-                        "distance_spread_km": format(
-                            profile.distance_spread_km, "f"
-                        ),
-                        "average_speed_kmph": format(
-                            profile.average_speed_kmph, "f"
-                        ),
-                        "traffic_variation_ratio": format(
-                            profile.traffic_variation_ratio, "f"
-                        ),
-                        "route_variation_ratio": format(
-                            profile.route_variation_ratio, "f"
-                        ),
-                        "base_surge_probability": format(
-                            profile.base_surge_probability, "f"
-                        ),
-                        "basis": "synthetic_simulation_assumption",
-                    }
-                    for profile in self.config.city_profiles
-                ],
-                "diagnostics": diagnostics.to_dict(),
+                **metadata,
             },
             "records": [record.to_dict() for record in self.records],
         }
-

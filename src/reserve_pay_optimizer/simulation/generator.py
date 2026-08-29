@@ -2,7 +2,9 @@
 
 from datetime import datetime, timedelta
 from decimal import Decimal, ROUND_CEILING, ROUND_HALF_UP
+from hashlib import sha256
 from random import Random
+from dataclasses import dataclass
 
 from reserve_pay_optimizer.config import INDIA_STANDARD_TIME
 from reserve_pay_optimizer.domain.mobility import (
@@ -26,6 +28,23 @@ def _clamp(value: Decimal, minimum: Decimal, maximum: Decimal) -> Decimal:
 
 def _random_decimal_gauss(rng: Random, sigma: Decimal) -> Decimal:
     return Decimal(str(rng.gauss(0.0, float(sigma))))
+
+
+@dataclass(frozen=True, slots=True)
+class _SyntheticCustomerBehavior:
+    overrun_bias: Decimal
+    variance_multiplier: Decimal
+
+
+def _customer_behavior(seed: int, customer_id: str) -> _SyntheticCustomerBehavior:
+    """Derive a hidden stable profile without Python's nondeterministic hash()."""
+
+    digest = sha256(f"{seed}:{customer_id}:phase7".encode("utf-8")).digest()
+    profile_rng = Random(int.from_bytes(digest[:8], "big"))
+    return _SyntheticCustomerBehavior(
+        overrun_bias=Decimal(str(profile_rng.uniform(-0.035, 0.09))),
+        variance_multiplier=Decimal(str(profile_rng.uniform(0.65, 1.60))),
+    )
 
 
 def _weighted_city(
@@ -132,15 +151,21 @@ def _actual_fare_and_duration(
     timestamp: datetime,
     profile: CitySimulationProfile,
     fare: FareModelConfig,
+    customer_behavior: _SyntheticCustomerBehavior | None = None,
 ) -> tuple[int, int]:
+    behavior = customer_behavior or _SyntheticCustomerBehavior(Decimal(0), Decimal(1))
     time_profile = TIME_BAND_PROFILES[time_band_for_hour(timestamp.hour)]
     route_change = _clamp(
-        _random_decimal_gauss(rng, profile.route_variation_ratio),
+        _random_decimal_gauss(
+            rng, profile.route_variation_ratio * behavior.variance_multiplier
+        ),
         Decimal("-0.30"),
         Decimal("0.45"),
     )
     traffic_sigma = (
-        profile.traffic_variation_ratio * time_profile.uncertainty_multiplier
+        profile.traffic_variation_ratio
+        * time_profile.uncertainty_multiplier
+        * behavior.variance_multiplier
     )
     traffic_change = _clamp(
         _random_decimal_gauss(rng, traffic_sigma),
@@ -163,7 +188,7 @@ def _actual_fare_and_duration(
     )
     noise_sigma = fare.pricing_noise_ratio * (
         Decimal(1) + (surge_multiplier - Decimal(1)) * Decimal("0.50")
-    )
+    ) * behavior.variance_multiplier
     pricing_noise = _clamp(
         _random_decimal_gauss(rng, noise_sigma),
         Decimal("-0.08"),
@@ -181,7 +206,10 @@ def _actual_fare_and_duration(
     actual_fare = max(
         1,
         int(
-            (unnoised_fare * (Decimal(1) + pricing_noise)).to_integral_value(
+            (
+                unnoised_fare
+                * (Decimal(1) + pricing_noise + behavior.overrun_bias)
+            ).to_integral_value(
                 rounding=ROUND_HALF_UP
             )
         ),
@@ -211,6 +239,12 @@ def simulate_transactions(config: SimulationConfig) -> SimulationDataset:
             config.fare_model,
             ROUND_CEILING,
         )
+        if config.customer_behavior_enabled:
+            customer_id = f"C{rng.randrange(config.customer_pool_size) + 1:04d}"
+            customer_behavior = _customer_behavior(config.seed, customer_id)
+        else:
+            customer_id = ""
+            customer_behavior = None
         actual_paise, actual_duration = _actual_fare_and_duration(
             rng,
             distance_km,
@@ -219,11 +253,14 @@ def simulate_transactions(config: SimulationConfig) -> SimulationDataset:
             timestamp,
             profile,
             config.fare_model,
+            customer_behavior,
         )
+        if not config.customer_behavior_enabled:
+            customer_id = f"C{rng.randrange(config.customer_pool_size) + 1:04d}"
         transaction_id = f"SIM-{index:06d}"
         context = RideTransactionContext(
             transaction_id=transaction_id,
-            customer_id=f"C{rng.randrange(config.customer_pool_size) + 1:04d}",
+            customer_id=customer_id,
             estimated_amount=Money(amount_paise=estimated_paise),
             city=city,
             distance_km=distance_km,

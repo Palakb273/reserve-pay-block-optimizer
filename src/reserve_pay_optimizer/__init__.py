@@ -1,6 +1,6 @@
 """Reserve Pay Block Optimizer package."""
 
-__version__ = "0.6.0"
+__version__ = "0.7.0"
 
 from reserve_pay_optimizer.domain.errors import DomainValidationError, ValidationIssue
 from reserve_pay_optimizer.domain.evaluation import (
@@ -21,6 +21,22 @@ from reserve_pay_optimizer.optimization.optimizer import ReserveBlockOptimizer
 from reserve_pay_optimizer.policy.models import PolicyOptimizationResult
 from reserve_pay_optimizer.policy.optimizer import PolicyConstrainedOptimizer
 from reserve_pay_optimizer.policy.risk import ReserveRiskPolicy, RiskProfile
+from reserve_pay_optimizer.personalization.config import (
+    MINIMUM_PERSONALIZATION_HISTORY,
+    PERSONALIZED_MODEL_VERSION,
+)
+from reserve_pay_optimizer.personalization.history import (
+    InMemoryCustomerHistoryProvider,
+    calculate_customer_history_features,
+)
+from reserve_pay_optimizer.personalization.model import (
+    PersonalizedConditionalFareDistributionModel,
+)
+from reserve_pay_optimizer.personalization.models import (
+    CustomerHistoryFeatures,
+    PersonalizedFareDistributionPrediction,
+)
+from reserve_pay_optimizer.personalization.predictor import PersonalizedFarePredictor
 from reserve_pay_optimizer.prediction.config import MODEL_VERSION, ModelConfig
 from reserve_pay_optimizer.prediction.distribution import FareDistributionPrediction
 from reserve_pay_optimizer.prediction.model import ConditionalFareDistributionModel
@@ -42,6 +58,7 @@ __all__ = [
     "BaselineComparison",
     "Currency",
     "ConditionalFareDistributionModel",
+    "CustomerHistoryFeatures",
     "DomainValidationError",
     "ExactEstimateStrategy",
     "FareModelConfig",
@@ -49,12 +66,17 @@ __all__ = [
     "FixedBufferStrategy",
     "Money",
     "MODEL_VERSION",
+    "MINIMUM_PERSONALIZATION_HISTORY",
     "ModelConfig",
     "OptimizationConfig",
     "OptimizationResult",
     "OptimizedReserveStrategy",
     "PolicyConstrainedOptimizer",
     "PolicyOptimizationResult",
+    "PERSONALIZED_MODEL_VERSION",
+    "PersonalizedConditionalFareDistributionModel",
+    "PersonalizedFareDistributionPrediction",
+    "PersonalizedFarePredictor",
     "ReserveRiskPolicy",
     "ReserveBlockOptimizer",
     "RiskProfile",
@@ -70,6 +92,8 @@ __all__ = [
     "TransactionDomain",
     "TransactionEvaluation",
     "ValidationIssue",
+    "InMemoryCustomerHistoryProvider",
+    "calculate_customer_history_features",
     "simulate_transactions",
     "validate_mobility_transaction",
     "__version__",

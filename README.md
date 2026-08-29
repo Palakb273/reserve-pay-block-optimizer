@@ -1,6 +1,6 @@
 # Reserve Pay Block Optimizer
 
-This Python 3.11+ project defines, simulates, predicts, and optimizes reserve blocks for India-first mobility payments. Phase 4 predicts conditional fare uncertainty, Phase 5 makes a transparent financial blocking decision under that uncertainty, and Phase 6 applies explicit merchant risk policies to that same optimizer.
+This Python 3.11+ project defines, simulates, predicts, and optimizes reserve blocks for India-first mobility payments. Phase 4 predicts conditional fare uncertainty, Phase 5 makes a transparent financial blocking decision, Phase 6 applies merchant risk policies, and Phase 7 personalizes the predicted distribution using eligible completed customer history.
 
 ## Problem
 
@@ -284,6 +284,85 @@ All three policies use one `OptimizedReserveStrategy` implementation with profil
 
 > The optimizer and policy layer use only reserve-decision-time information. Actual final amount is used only for retrospective evaluation.
 
+## Phase 7 — Customer-Level Personalization
+
+The original predictor uses the current ride context. Phase 7 additionally summarizes historical completed rides belonging to that customer, but only when each historical outcome was already available before the current decision:
+
+```text
+eligible history record <=>
+    same customer
+    different transaction
+    completed_at < current transaction timestamp
+```
+
+Records are ordered by transaction start time. A completion-time priority queue releases outcomes into per-customer history only when the strict rule above becomes true. Consequently, an overlapping ride that started earlier but has not completed cannot leak into another decision. After feature construction, records are split chronologically: first 70% train, next 15% validation, final 15% untouched test. Personalized records are never shuffled.
+
+### Historical feature schema
+
+For eligible prior rides, let `r_i = actual_amount_i / estimated_amount_i` and `n` be completed history count. The interpretable behavioral features are:
+
+```text
+customer_history_count = n
+
+customer_mean_fare_ratio = sum(r_i) / n
+
+customer_fare_ratio_stddev = sqrt(
+    sum((r_i - mean_fare_ratio)^2) / n
+)
+
+customer_overrun_rate = count(r_i > 1) / n
+
+customer_mean_positive_overrun_ratio =
+    mean(r_i - 1 for r_i > 1)
+```
+
+The standard deviation uses the deterministic population definition. One historical ride has standard deviation zero. With no history, structural values are count `0`, mean ratio `1`, and other aggregates `0`; these values are never passed to the personalized model because cold start falls back to the base predictor.
+
+`customer_id` and `transaction_id` are lookup/tracing identifiers only. They are prohibited from the ML feature matrix—there is no hashing, one-hot encoding, numeric mapping, or identity memorization. No demographic, sensitive, credit, device, address, or phone attributes exist.
+
+### Cold start and model boundary
+
+The minimum history threshold is three completed rides:
+
+```text
+history count 0-2 -> fare_distribution_v1 (base fallback)
+history count 3+  -> fare_distribution_personalized_v1
+```
+
+Predictions expose `prediction_mode`, history count, and history-as-of time. They never expose historical actual-fare lists or hidden simulator parameters. Both predictors retain the same fare-ratio target, quantile grid, gradient-boosting family, and hyperparameters so evaluation isolates the value of customer history.
+
+The optimizer remains unaware of customer history:
+
+```text
+current context + eligible history
+              -> personalized distribution
+              -> unchanged Phase-5 optimizer
+              -> unchanged Phase-6 merchant policy
+```
+
+### Opt-in synthetic customer behavior
+
+Default Phase-3 simulation is unchanged. `--personalized-customer-behavior` opts into deterministic hidden customer characteristics derived from SHA-256 of simulation seed and customer ID:
+
+- fare overrun bias sampled from `-0.035` through `0.090`;
+- outcome variance multiplier sampled from `0.65` through `1.60`.
+
+The bias modestly shifts realized fare and the variance multiplier scales route, traffic, and pricing uncertainty. They remain stochastic per ride but persistent per synthetic customer. Neither hidden value is stored in `RideTransactionContext`, exported records, history features, or model features. The model can observe behavior only indirectly through prior completed outcomes.
+
+> Current personalization evidence is based entirely on synthetic mobility data. Customer behavior assumptions are not Razorpay, Uber, Ola, or merchant production statistics.
+
+### Evaluation and diagnostics
+
+Evaluation compares the Phase-4 base predictor and Phase-7 predictor on identical chronological test records. It reports pinball loss, mean absolute calibration error, Q50 MAE, Q90/Q95/Q97/Q99 coverage, Q05–Q95 coverage/width, history-depth buckets (`0-2`, `3-5`, `6-10`, `11+`), and observed-history-only diagnostic segments:
+
+- historically stable: at least three rides, standard deviation at most `0.025`, and mean ratio within `0.03` of one;
+- historically variable: at least three rides and standard deviation at least `0.05`;
+- historically overrun-prone: at least three rides and the documented mean/overrun thresholds.
+
+These labels are evaluation diagnostics, not customer judgments or risk-policy rules. Balanced-policy downstream evaluation reuses the existing objective and retrospective metrics.
+
+The separate trusted artifact is stored under `artifacts/prediction/fare_distribution_personalized_v1/`. It records the chronological split, history schema, minimum threshold, dataset fingerprint, simulation metadata, model configuration, evaluation summary, and exact library versions. Joblib artifacts must be loaded only from trusted project sources.
+
 ## Strategy extension boundary
 
 Every strategy implements the same minimal contract:
@@ -389,13 +468,24 @@ src/reserve_pay_optimizer/
     errors.py                       Structured infeasible-policy error
     models.py                       Policy-aware optimization result
     optimizer.py                    Feasible-candidate constrained optimization
+  personalization/
+    config.py                       History threshold, model version, diagnostic thresholds
+    models.py                       Typed history and personalized prediction result
+    history.py                      Strict completion-time history provider and formulas
+    features.py                     Context plus behavioral feature extraction
+    dataset.py                      Completion queue, chronological split, fingerprint
+    model.py                        Personalized quantile gradient-boosting models
+    predictor.py                    Automatic cold-start/personalized routing
+    evaluation.py                   Base comparison, cohorts, segments, reserve outcomes
+    training.py                     Chronological training orchestration
+    persistence.py                  Trusted personalized artifact save/load
   cli.py                            CLI adapter
 artifacts/prediction/               Reproducible Phase 4 trained artifact
 examples/
   valid_hyderabad_ride.json
   invalid_ride.json
   baseline_evaluation.json          Deterministic Phase 2 fixture
-tests/                              Phase 1-through-6 tests
+tests/                              Phase 1-through-7 tests
 ```
 
 Domain and service code remains independent of HTTP and Razorpay SDK objects. The only direct runtime dependency is scikit-learn.
@@ -521,6 +611,63 @@ python -m reserve_pay_optimizer evaluate-risk-profiles `
 
 The three low-level lambdas and candidate step accept explicit CLI overrides for Phase 5 and Phase 6 commands. Profiles change feasibility only; all profiles in one comparison use exactly the same supplied objective configuration.
 
+Generate the opt-in personalized training dataset:
+
+```powershell
+python -m reserve_pay_optimizer simulate-mobility `
+  --count 20000 `
+  --seed 202607 `
+  --customer-pool-size 1000 `
+  --personalized-customer-behavior `
+  --output personalized_transactions.json
+```
+
+Train the separate Phase 7 artifact:
+
+```powershell
+python -m reserve_pay_optimizer train-personalized-predictor `
+  --file personalized_transactions.json `
+  --seed 42 `
+  --base-model artifacts/prediction/fare_distribution_v1 `
+  --output artifacts/prediction/fare_distribution_personalized_v1
+```
+
+Evaluate the chronological held-out partition:
+
+```powershell
+python -m reserve_pay_optimizer evaluate-personalization `
+  --file personalized_transactions.json `
+  --model artifacts/prediction/fare_distribution_personalized_v1 `
+  --base-model artifacts/prediction/fare_distribution_v1
+```
+
+Personalized inference and optimization require an evaluation-record-shaped history file:
+
+```powershell
+python -m reserve_pay_optimizer predict-personalized-distribution `
+  --model artifacts/prediction/fare_distribution_personalized_v1 `
+  --base-model artifacts/prediction/fare_distribution_v1 `
+  --history examples/personalization_stable_history.json `
+  --file examples/personalization_current_ride.json
+
+python -m reserve_pay_optimizer optimize-personalized-block `
+  --model artifacts/prediction/fare_distribution_personalized_v1 `
+  --base-model artifacts/prediction/fare_distribution_v1 `
+  --history examples/personalization_stable_history.json `
+  --file examples/personalization_current_ride.json `
+  --risk-profile balanced
+```
+
+Run the calculated same-ride demonstration:
+
+```powershell
+python -m reserve_pay_optimizer compare-customer-personalization `
+  --model artifacts/prediction/fare_distribution_personalized_v1 `
+  --base-model artifacts/prediction/fare_distribution_v1 `
+  --scenario examples/personalization_comparison.json `
+  --risk-profile balanced
+```
+
 ### Small generated record
 
 For `--count 2 --seed 7`, the first record is:
@@ -611,21 +758,21 @@ The same three transaction IDs and total actual amount are used for each strateg
 python -m unittest discover -s tests -v
 ```
 
-The suite covers every Phase 1–5 invariant plus immutable profile targets, constrained minimum selection, profile ordering on controlled fixtures, infeasible-support errors, policy/outcome separation, predictor reuse, per-city diagnostics, profile strategy integration, and end-to-end Phase 6 CLI evaluation.
+The suite covers every Phase 1–6 invariant plus hand-computable history formulas, future/current/overlapping-ride leakage prevention, no-ID feature schemas, cold-start routing, chronological splitting, hidden simulator boundaries, personalized training/persistence, monotonic predictions, policy integration, same-ride behavioral differentiation, and Phase 7 CLI workflows.
 
 ## Explicitly not implemented
 
-Phase 6 adds only static merchant risk policies and does not contain:
+Phase 7 adds only customer transaction-history personalization and does not contain:
 
 - production data or claims that synthetic city profiles are measured statistics;
 - TensorFlow, PyTorch, XGBoost, LightGBM, or an LLM SDK;
-- customer or merchant personalization;
+- merchant personalization;
 - dynamic re-optimization;
 - LLM explanations or AI agents;
 - Razorpay API calls;
 - a frontend or dashboard;
 - production backtesting data.
 
-## What remains for Phase 7
+## What remains for Phase 8
 
-Phase 7 may add customer-level behavioral personalization using information that is genuinely available at decision time. Merchant-specific learning, dynamic re-optimization, explanation agents, Razorpay calls, and UI remain later phases. Any future work must continue treating policy probabilities as estimates rather than guarantees.
+Phase 8 may add explicit in-ride dynamic re-optimization when new traffic, route, or duration information becomes legitimately available. Merchant-specific learning, explanation agents, Razorpay calls, additional-block execution, and UI remain later phases. Any future work must preserve event-time leakage boundaries and continue treating probabilities as estimates rather than guarantees.

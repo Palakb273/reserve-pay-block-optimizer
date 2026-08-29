@@ -97,6 +97,7 @@ class SimulationConfig:
     city_weights: tuple[tuple[SupportedCity, int], ...] = DEFAULT_CITY_WEIGHTS
     city_profiles: tuple[CitySimulationProfile, ...] = DEFAULT_CITY_PROFILES
     fare_model: FareModelConfig = FareModelConfig()
+    customer_behavior_enabled: bool = False
 
     def __post_init__(self) -> None:
         issues: list[ValidationIssue] = []
@@ -106,6 +107,14 @@ class SimulationConfig:
                 issues.append(
                     ValidationIssue(field, "invalid_type", f"{field} must be an integer.")
                 )
+        if not isinstance(self.customer_behavior_enabled, bool):
+            issues.append(
+                ValidationIssue(
+                    "customer_behavior_enabled",
+                    "invalid_type",
+                    "customer_behavior_enabled must be boolean.",
+                )
+            )
         if isinstance(self.transaction_count, int) and self.transaction_count <= 0:
             issues.append(
                 ValidationIssue("transaction_count", "must_be_positive", "transaction_count must be positive.")
