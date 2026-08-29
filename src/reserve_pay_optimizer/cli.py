@@ -4,12 +4,14 @@ import argparse
 import json
 import sys
 from datetime import datetime
-from decimal import Decimal
+from decimal import Decimal, InvalidOperation
 from pathlib import Path
 from typing import Sequence, TextIO
 
 from reserve_pay_optimizer.config import MOBILITY_DOMAIN, SUPPORTED_CURRENCY
 from reserve_pay_optimizer.domain.errors import DomainValidationError, ValidationIssue
+from reserve_pay_optimizer.optimization.config import OptimizationConfig
+from reserve_pay_optimizer.optimization.optimizer import ReserveBlockOptimizer
 from reserve_pay_optimizer.prediction.config import ModelConfig
 from reserve_pay_optimizer.prediction.dataset import (
     build_prediction_records,
@@ -28,6 +30,7 @@ from reserve_pay_optimizer.services.mobility_validation import (
     parse_mobility_transaction,
     validate_mobility_transaction,
 )
+from reserve_pay_optimizer.services.optimizer_evaluation import evaluate_optimizer_strategies
 from reserve_pay_optimizer.simulation.config import SimulationConfig
 from reserve_pay_optimizer.simulation.generator import simulate_transactions
 from reserve_pay_optimizer.strategies.exact_estimate import ExactEstimateStrategy
@@ -42,6 +45,33 @@ def _datetime_argument(value: str) -> datetime:
     if parsed.tzinfo is None or parsed.utcoffset() is None:
         raise argparse.ArgumentTypeError("must include a UTC offset")
     return parsed
+
+
+def _decimal_argument(value: str) -> Decimal:
+    try:
+        parsed = Decimal(value)
+    except InvalidOperation as exc:
+        raise argparse.ArgumentTypeError("must be a decimal number") from exc
+    if not parsed.is_finite():
+        raise argparse.ArgumentTypeError("must be finite")
+    return parsed
+
+
+def _add_optimization_arguments(parser: argparse.ArgumentParser) -> None:
+    defaults = OptimizationConfig()
+    parser.add_argument("--lambda-under", type=_decimal_argument, default=defaults.lambda_under)
+    parser.add_argument("--lambda-excess", type=_decimal_argument, default=defaults.lambda_excess)
+    parser.add_argument("--lambda-friction", type=_decimal_argument, default=defaults.lambda_friction)
+    parser.add_argument("--candidate-step-paise", type=int, default=defaults.candidate_step_paise)
+
+
+def _optimization_config(args: argparse.Namespace) -> OptimizationConfig:
+    return OptimizationConfig(
+        lambda_under=args.lambda_under,
+        lambda_excess=args.lambda_excess,
+        lambda_friction=args.lambda_friction,
+        candidate_step_paise=args.candidate_step_paise,
+    )
 
 
 def _parser() -> argparse.ArgumentParser:
@@ -98,6 +128,21 @@ def _parser() -> argparse.ArgumentParser:
     )
     predict.add_argument("--model", type=Path, required=True)
     predict.add_argument("--file", type=Path, required=True)
+    optimize = subparsers.add_parser(
+        "optimize-block",
+        help="recommend one reserve block from a trusted fare-distribution model",
+    )
+    optimize.add_argument("--model", type=Path, required=True)
+    optimize.add_argument("--file", type=Path, required=True)
+    optimize.add_argument("--verbose", action="store_true", help="include the five best candidate scores")
+    _add_optimization_arguments(optimize)
+    evaluate_optimizer = subparsers.add_parser(
+        "evaluate-optimizer",
+        help="compare exact, fixed-buffer, and optimized reserve strategies",
+    )
+    evaluate_optimizer.add_argument("--model", type=Path, required=True)
+    evaluate_optimizer.add_argument("--file", type=Path, required=True)
+    _add_optimization_arguments(evaluate_optimizer)
     return parser
 
 
@@ -185,6 +230,27 @@ def main(argv: Sequence[str] | None = None) -> int:
                 payload = _load_payload(stream)
             context = parse_mobility_transaction(payload)  # type: ignore[arg-type]
             result = artifact.model.predict(context).to_dict()
+        elif args.command == "optimize-block":
+            artifact = load_predictor_artifact(args.model)
+            with args.file.open("r", encoding="utf-8") as stream:
+                payload = _load_payload(stream)
+            context = parse_mobility_transaction(payload)  # type: ignore[arg-type]
+            optimizer = ReserveBlockOptimizer(_optimization_config(args))
+            optimization = optimizer.optimize(context, artifact.model.predict(context))
+            result = optimization.to_dict(include_candidates=args.verbose)
+        elif args.command == "evaluate-optimizer":
+            artifact = load_predictor_artifact(args.model)
+            with args.file.open("r", encoding="utf-8") as stream:
+                payload = _load_payload(stream)
+            transactions, outcomes = parse_evaluation_dataset(payload)  # type: ignore[arg-type]
+            evaluation = evaluate_optimizer_strategies(
+                transactions,
+                outcomes,
+                artifact.model,
+                ReserveBlockOptimizer(_optimization_config(args)),
+            )
+            result = evaluation.to_dict()
+            result.update({"domain": MOBILITY_DOMAIN.value, "currency": SUPPORTED_CURRENCY.value})
         else:
             if args.file:
                 with args.file.open("r", encoding="utf-8") as stream:

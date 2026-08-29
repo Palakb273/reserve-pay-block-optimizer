@@ -41,6 +41,26 @@ def _write_json(path: Path, value: object) -> None:
     path.write_text(json.dumps(value, indent=2, sort_keys=True) + "\n", encoding="utf-8")
 
 
+def validate_artifact_compatibility(metadata: dict[str, object]) -> None:
+    """Fail before joblib loading when serialized-library versions differ."""
+
+    versions = metadata.get("library_versions")
+    if not isinstance(versions, dict):
+        raise ValueError("artifact does not contain required library-version metadata")
+    expected = {
+        "scikit_learn": sklearn.__version__,
+        "joblib": joblib.__version__,
+    }
+    for library, runtime_version in expected.items():
+        artifact_version = versions.get(library)
+        if artifact_version != runtime_version:
+            raise ValueError(
+                f"incompatible trusted artifact: {library} {artifact_version!r} was "
+                f"used for serialization, but runtime {runtime_version!r} is installed; "
+                "use the recorded library version or retrain the model"
+            )
+
+
 def save_predictor_artifact(result: TrainingResult, directory: Path) -> None:
     """Persist each fitted quantile model plus fully inspectable metadata."""
 
@@ -99,6 +119,7 @@ def load_predictor_artifact(directory: Path) -> LoadedPredictorArtifact:
     metadata = json.loads((directory / "metadata.json").read_text(encoding="utf-8"))
     if metadata.get("model_version") != MODEL_VERSION:
         raise ValueError(f"unsupported model version: {metadata.get('model_version')}")
+    validate_artifact_compatibility(metadata)
     expected_quantiles = [quantile_key(value) for value in QUANTILES]
     if metadata.get("quantiles") != expected_quantiles:
         raise ValueError("artifact quantile configuration does not match this project")

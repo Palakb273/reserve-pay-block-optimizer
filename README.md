@@ -1,6 +1,6 @@
 # Reserve Pay Block Optimizer
 
-This Python 3.11+ project defines, simulates, and predicts uncertain final fares for India-first mobility payments. Phase 4 adds a learned conditional-distribution engine using scikit-learn. It predicts fare uncertainty; it does not choose a reserve amount.
+This Python 3.11+ project defines, simulates, predicts, and optimizes reserve blocks for India-first mobility payments. Phase 4 predicts conditional fare uncertainty; Phase 5 makes a transparent financial blocking decision under that uncertainty.
 
 ## Problem
 
@@ -194,6 +194,58 @@ The Global Quantile Baseline learns unconditional fare-ratio quantiles from the 
 
 Joblib uses pickle semantics. Load model artifacts only from trusted project sources; never load arbitrary or user-uploaded joblib/pickle files.
 
+Artifact loading validates the recorded scikit-learn and joblib versions before deserializing any model. A mismatch fails clearly and requires installing the recorded versions or retraining; it is never silently ignored.
+
+## Phase 5 - Reserve optimization engine
+
+Phase 4 answers “what conditional final-fare distribution is predicted?” Phase 5 answers “which candidate block minimizes the configured cost of under-blocking, expected unused funds, and customer-visible extra blocking?”
+
+```text
+Score(block)
+= lambda_under * estimated_under_block_probability(block)
++ lambda_excess * expected_excess_block(block) / estimated_amount
++ lambda_friction * max(block - estimated_amount, 0) / estimated_amount
+```
+
+The default low-level configuration is:
+
+```text
+lambda_under          = 4.0
+lambda_excess         = 1.0
+lambda_friction       = 0.5
+candidate_step_paise  = 100
+```
+
+These values deliberately make under-blocking substantially more costly than a modest excess block while retaining meaningful excess and friction penalties. They were selected as simple product-principle parameters, not tuned against the held-out test set.
+
+> The objective weights are project policy parameters for experimentation. They are not Razorpay-defined production risk weights.
+
+### CDF and modeled support
+
+`QuantileDistribution` estimates `F(block)` using piecewise-linear interpolation between distinct published quantile amounts. Equal neighboring amounts are grouped safely at the highest corresponding probability. Values below Q05 receive conservative zero modeled coverage. Values at or above Q99 remain capped at `0.99`: Q99 is not a maximum fare and never becomes 100% certainty. No unsupported upper-tail extrapolation is performed.
+
+### Expected excess
+
+Expected unused funds are not approximated by `block - Q50`. The implementation analytically evaluates:
+
+```text
+E[(block - Y)+] = integral from 0 to F(block) of (block - Q(u)) du
+```
+
+over each linear quantile-function segment. For this integration only, Q0 is approximated by linearly extending the Q05–Q10 segment downward and clamping the amount to at least one paise. This is a numerical lower-tail approximation, not a learned Q0. The public expected-excess `Money` rounds upward to integer paise.
+
+Expected excess and friction are distinct. Expected excess describes model-weighted unused funds across possible final fares. Friction describes the full visible block above the original estimate, whether or not that increment is later collected.
+
+### Candidate search and selection
+
+Candidates include the estimate, every published quantile amount, and 100-paise steps by default through the range anchored by `min(estimate, Q50)` and `max(estimate, Q99)`. Values are positive, sorted, and deduplicated. Every candidate is scored with exact `Decimal` arithmetic. The minimum score wins; equal scores choose the smaller block.
+
+`OptimizationResult` contains the recommended `Money`, estimated collection/under-block probabilities, expected excess, normalized ratios, score components, candidate count, configuration, and model version. It contains no outcome. `OptimizedReserveStrategy` converts this rich result to the existing minimal `ReserveDecision`, so Exact Estimate, Fixed 20%, and Optimized Reserve use the same retrospective evaluation service and actual outcomes.
+
+> The optimizer uses only information available at reserve-decision time. Actual final amount is used only for retrospective evaluation.
+
+Evaluation must use held-out or fresh data without retraining. The reproducible Phase 5 demonstration uses 10,000 newly simulated records with seed `202605`; the Phase 4 artifact remains unchanged.
+
 ## Strategy extension boundary
 
 Every strategy implements the same minimal contract:
@@ -209,9 +261,9 @@ class ReserveStrategy(Protocol):
     ) -> ReserveDecision: ...
 ```
 
-`ReserveDecision` contains only the transaction ID, strategy/version, block amount, and deterministic parameters. It has no confidence, probability, predicted final amount, risk score, explanation, or outcome.
+`ReserveDecision` contains only the transaction ID, strategy/version, block amount, and deterministic parameters. Rich mathematical diagnostics remain in the separate `OptimizationResult`; neither object contains outcomes.
 
-A future optimizer can implement this protocol and enter the same comparison service without changing evaluation code.
+`OptimizedReserveStrategy` implements this protocol and enters the same comparison service without changing Phase-2 evaluation code.
 
 ## Evaluation formulas
 
@@ -263,11 +315,13 @@ src/reserve_pay_optimizer/
     base.py                         ReserveStrategy protocol
     exact_estimate.py               Exact-estimate baseline
     fixed_buffer.py                 Configurable fixed-buffer baseline
+    optimized.py                    Predictor-to-optimizer strategy adapter
   services/
     mobility_validation.py          Phase 1 validation/normalization
     evaluation.py                   Transaction and aggregate evaluation
     comparison.py                   Fair multi-strategy comparison
     evaluation_input.py             Separated JSON dataset parser
+    optimizer_evaluation.py         Shared three-strategy comparison plus decision diagnostics
   simulation/
     config.py                       Validated simulator/fare configuration
     profiles.py                     Synthetic city and time-band assumptions
@@ -284,13 +338,20 @@ src/reserve_pay_optimizer/
     evaluation.py                   Calibration, loss, interval, city, crossing metrics
     training.py                     Deterministic training orchestration
     persistence.py                  Trusted joblib artifact save/load
+  optimization/
+    config.py                       Validated objective weights and candidate step
+    distribution.py                 CDF interpolation and analytical excess integration
+    candidates.py                   Bounded deterministic candidate generation
+    objective.py                    Dimensionless weighted candidate scoring
+    models.py                       Score components and OptimizationResult
+    optimizer.py                    Minimum-score search and tie-breaking
   cli.py                            CLI adapter
 artifacts/prediction/               Reproducible Phase 4 trained artifact
 examples/
   valid_hyderabad_ride.json
   invalid_ride.json
   baseline_evaluation.json          Deterministic Phase 2 fixture
-tests/                              Phase 1, Phase 2, and Phase 3 tests
+tests/                              Phase 1-through-5 tests
 ```
 
 Domain and service code remains independent of HTTP and Razorpay SDK objects. The only direct runtime dependency is scikit-learn.
@@ -364,6 +425,31 @@ python -m reserve_pay_optimizer predict-distribution `
 ```
 
 The response contains integer-paise quantiles and no recommended block amount. `FareDistributionPrediction.amount_for_quantile(Decimal("0.97"))` provides an exact configured-quantile query; unmodeled or out-of-range probabilities raise a clear `KeyError`. No probability is extrapolated beyond Q05–Q99.
+
+Optimize one transaction, optionally showing the five best candidates:
+
+```powershell
+python -m reserve_pay_optimizer optimize-block `
+  --model artifacts/prediction/fare_distribution_v1 `
+  --file examples/valid_hyderabad_ride.json `
+  --verbose
+```
+
+Generate an unseen evaluation dataset and compare all strategies without retraining:
+
+```powershell
+python -m reserve_pay_optimizer simulate-mobility `
+  --count 10000 `
+  --seed 202605 `
+  --customer-pool-size 1000 `
+  --output evaluation_transactions.json
+
+python -m reserve_pay_optimizer evaluate-optimizer `
+  --file evaluation_transactions.json `
+  --model artifacts/prediction/fare_distribution_v1
+```
+
+The three low-level lambdas and candidate step also accept explicit CLI overrides. No named policy profiles or target-success constraints exist in Phase 5.
 
 ### Small generated record
 
@@ -455,22 +541,23 @@ The same three transaction IDs and total actual amount are used for each strateg
 python -m unittest discover -s tests -v
 ```
 
-The suite covers every Phase 1–3 invariant plus Phase 4 leakage protection, deterministic features/splits/training, quantile output and repair, hand-computable metrics, trusted persistence, and simulator-to-CLI integration.
+The suite covers every Phase 1–4 invariant plus CDF interpolation, duplicate quantiles, the Q99 cap, hand-computable analytical excess, candidates, the exact objective, minimum selection, tie-breaking, monotonic properties, extreme weights, leakage protection, artifact compatibility, strategy integration, and end-to-end CLI evaluation.
 
 ## Explicitly not implemented
 
-Phase 4 predicts uncertainty but does not optimize reserve amounts. The project does not contain:
+Phase 5 makes one low-level optimization decision but does not contain:
 
 - production data or claims that synthetic city profiles are measured statistics;
 - TensorFlow, PyTorch, XGBoost, LightGBM, or an LLM SDK;
-- an optimized reserve amount or block search;
-- risk profiles or customer personalization;
+- Conservative/Balanced/Aggressive or other named risk profiles;
+- configurable target-success policies such as 99%/97%/93%;
+- customer or merchant personalization;
 - dynamic re-optimization;
 - LLM explanations or AI agents;
 - Razorpay API calls;
 - a frontend or dashboard;
 - production backtesting data.
 
-## What remains for Phase 5
+## What remains for Phase 6
 
-Phase 5 may consume a `FareDistributionPrediction` and define an explicit reserve optimization objective, constraints, and evidence-based decision policy. It must decide how much to block without leaking outcomes or changing the Phase 4 predictor into a decision engine. Risk profiles, personalization, re-optimization, explanation/agents, Razorpay calls, and UI remain later work.
+Phase 6 may map named merchant policies onto the low-level `OptimizationConfig` or add explicit target-probability constraints. It must not reinterpret estimated probabilities as guarantees. Customer/merchant personalization, dynamic re-optimization, explanation agents, Razorpay calls, and UI remain later phases.
