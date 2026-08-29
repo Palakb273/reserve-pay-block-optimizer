@@ -1,6 +1,6 @@
 # Reserve Pay Block Optimizer
 
-This Python 3.11+ project defines, simulates, predicts, and optimizes reserve blocks for India-first mobility payments. Phase 4 predicts conditional fare uncertainty; Phase 5 makes a transparent financial blocking decision under that uncertainty.
+This Python 3.11+ project defines, simulates, predicts, and optimizes reserve blocks for India-first mobility payments. Phase 4 predicts conditional fare uncertainty, Phase 5 makes a transparent financial blocking decision under that uncertainty, and Phase 6 applies explicit merchant risk policies to that same optimizer.
 
 ## Problem
 
@@ -246,6 +246,44 @@ Candidates include the estimate, every published quantile amount, and 100-paise 
 
 Evaluation must use held-out or fresh data without retraining. The reproducible Phase 5 demonstration uses 10,000 newly simulated records with seed `202605`; the Phase 4 artifact remains unchanged.
 
+## Phase 6 — Merchant Risk Profiles
+
+Different merchants can have different tolerance for failed collections versus excess customer funds being temporarily blocked. Phase 5 minimizes the objective across every candidate. Phase 6 first filters those exact same candidates by a merchant policy and then minimizes the unchanged Phase 5 objective within the feasible set:
+
+```text
+feasible(block, policy)
+    = estimated_collection_probability(block) >= policy.target
+
+selected block
+    = argmin Score(block), over feasible candidates only
+```
+
+The built-in, centralized policies are:
+
+| Profile | Target estimated collection probability |
+|---|---:|
+| Aggressive | 0.93 |
+| Balanced | 0.97 |
+| Conservative | 0.99 |
+
+Balanced is the default policy when application code explicitly requests `ReserveRiskPolicy.default()`. The `optimize-block` CLI keeps Phase 5 backward compatibility: omitting `--risk-profile` remains unconstrained; passing a profile enables Phase 6 policy enforcement.
+
+These names describe merchant tolerance for modeled under-block risk. “Conservative” does not guarantee collection, and “Aggressive” does not intentionally under-block. Each target is an estimated probability from the synthetic-data-trained conditional model, bounded by Q99 support. The target is not a guarantee, service-level agreement, Razorpay policy, or production recommendation.
+
+> Risk profile targets are modeled collection-probability thresholds, not guarantees of successful collection.
+
+> The 99% / 97% / 93% values are hackathon/product policy settings from the product design and are not Razorpay production defaults.
+
+`PolicyConstrainedOptimizer` reuses `ReserveBlockOptimizer.score_candidates()` and its candidate generation, CDF, expected-excess calculation, lambdas, score components, and smaller-block tie-break. It does not replace the objective, alter the distribution, or use the final outcome. If a requested target exceeds modeled support or no generated candidate reaches it, a structured `PolicyTargetNotReachable` error is returned rather than silently lowering the target or claiming unsupported certainty.
+
+`PolicyOptimizationResult` records the selected profile, target, `policy_satisfied`, feasible-candidate count, estimated probability, expected excess, and full Phase 5 objective result. Policy satisfaction means the model estimate met the configured threshold at decision time. It is deliberately distinct from retrospective realized collection success, which can be computed only after the actual fare exists.
+
+All three policies use one `OptimizedReserveStrategy` implementation with profile-specific identifiers: `optimized_aggressive`, `optimized_balanced`, and `optimized_conservative`. They enter the same Phase 2 comparison service as Exact Estimate and Fixed Buffer 20%, so every strategy receives identical transactions and outcomes. The policy evaluation reports target versus average estimated probability, satisfaction rate, average block, expected excess, objective score, realized success, calibration difference, and per-city realized success/excess diagnostics.
+
+> Merchant risk profiles are project-level policy abstractions for experimentation. They are not Razorpay-defined production policies.
+
+> The optimizer and policy layer use only reserve-decision-time information. Actual final amount is used only for retrospective evaluation.
+
 ## Strategy extension boundary
 
 Every strategy implements the same minimal contract:
@@ -322,6 +360,7 @@ src/reserve_pay_optimizer/
     comparison.py                   Fair multi-strategy comparison
     evaluation_input.py             Separated JSON dataset parser
     optimizer_evaluation.py         Shared three-strategy comparison plus decision diagnostics
+    policy_evaluation.py            Shared baseline/profile evaluation and city diagnostics
   simulation/
     config.py                       Validated simulator/fare configuration
     profiles.py                     Synthetic city and time-band assumptions
@@ -345,13 +384,18 @@ src/reserve_pay_optimizer/
     objective.py                    Dimensionless weighted candidate scoring
     models.py                       Score components and OptimizationResult
     optimizer.py                    Minimum-score search and tie-breaking
+  policy/
+    risk.py                         Immutable profiles and centralized targets
+    errors.py                       Structured infeasible-policy error
+    models.py                       Policy-aware optimization result
+    optimizer.py                    Feasible-candidate constrained optimization
   cli.py                            CLI adapter
 artifacts/prediction/               Reproducible Phase 4 trained artifact
 examples/
   valid_hyderabad_ride.json
   invalid_ride.json
   baseline_evaluation.json          Deterministic Phase 2 fixture
-tests/                              Phase 1-through-5 tests
+tests/                              Phase 1-through-6 tests
 ```
 
 Domain and service code remains independent of HTTP and Razorpay SDK objects. The only direct runtime dependency is scikit-learn.
@@ -435,6 +479,24 @@ python -m reserve_pay_optimizer optimize-block `
   --verbose
 ```
 
+Apply one Phase 6 merchant profile to the same workflow:
+
+```powershell
+python -m reserve_pay_optimizer optimize-block `
+  --model artifacts/prediction/fare_distribution_v1 `
+  --file examples/valid_hyderabad_ride.json `
+  --risk-profile balanced `
+  --verbose
+```
+
+Compare all three profile decisions for one transaction:
+
+```powershell
+python -m reserve_pay_optimizer compare-risk-profiles `
+  --model artifacts/prediction/fare_distribution_v1 `
+  --file examples/valid_hyderabad_ride.json
+```
+
 Generate an unseen evaluation dataset and compare all strategies without retraining:
 
 ```powershell
@@ -449,7 +511,15 @@ python -m reserve_pay_optimizer evaluate-optimizer `
   --model artifacts/prediction/fare_distribution_v1
 ```
 
-The three low-level lambdas and candidate step also accept explicit CLI overrides. No named policy profiles or target-success constraints exist in Phase 5.
+Evaluate both baselines and all three policies against the same unseen records:
+
+```powershell
+python -m reserve_pay_optimizer evaluate-risk-profiles `
+  --file evaluation_transactions.json `
+  --model artifacts/prediction/fare_distribution_v1
+```
+
+The three low-level lambdas and candidate step accept explicit CLI overrides for Phase 5 and Phase 6 commands. Profiles change feasibility only; all profiles in one comparison use exactly the same supplied objective configuration.
 
 ### Small generated record
 
@@ -541,16 +611,14 @@ The same three transaction IDs and total actual amount are used for each strateg
 python -m unittest discover -s tests -v
 ```
 
-The suite covers every Phase 1–4 invariant plus CDF interpolation, duplicate quantiles, the Q99 cap, hand-computable analytical excess, candidates, the exact objective, minimum selection, tie-breaking, monotonic properties, extreme weights, leakage protection, artifact compatibility, strategy integration, and end-to-end CLI evaluation.
+The suite covers every Phase 1–5 invariant plus immutable profile targets, constrained minimum selection, profile ordering on controlled fixtures, infeasible-support errors, policy/outcome separation, predictor reuse, per-city diagnostics, profile strategy integration, and end-to-end Phase 6 CLI evaluation.
 
 ## Explicitly not implemented
 
-Phase 5 makes one low-level optimization decision but does not contain:
+Phase 6 adds only static merchant risk policies and does not contain:
 
 - production data or claims that synthetic city profiles are measured statistics;
 - TensorFlow, PyTorch, XGBoost, LightGBM, or an LLM SDK;
-- Conservative/Balanced/Aggressive or other named risk profiles;
-- configurable target-success policies such as 99%/97%/93%;
 - customer or merchant personalization;
 - dynamic re-optimization;
 - LLM explanations or AI agents;
@@ -558,6 +626,6 @@ Phase 5 makes one low-level optimization decision but does not contain:
 - a frontend or dashboard;
 - production backtesting data.
 
-## What remains for Phase 6
+## What remains for Phase 7
 
-Phase 6 may map named merchant policies onto the low-level `OptimizationConfig` or add explicit target-probability constraints. It must not reinterpret estimated probabilities as guarantees. Customer/merchant personalization, dynamic re-optimization, explanation agents, Razorpay calls, and UI remain later phases.
+Phase 7 may add customer-level behavioral personalization using information that is genuinely available at decision time. Merchant-specific learning, dynamic re-optimization, explanation agents, Razorpay calls, and UI remain later phases. Any future work must continue treating policy probabilities as estimates rather than guarantees.

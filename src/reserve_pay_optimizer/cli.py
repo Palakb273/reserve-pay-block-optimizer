@@ -12,6 +12,9 @@ from reserve_pay_optimizer.config import MOBILITY_DOMAIN, SUPPORTED_CURRENCY
 from reserve_pay_optimizer.domain.errors import DomainValidationError, ValidationIssue
 from reserve_pay_optimizer.optimization.config import OptimizationConfig
 from reserve_pay_optimizer.optimization.optimizer import ReserveBlockOptimizer
+from reserve_pay_optimizer.policy.errors import PolicyTargetNotReachable
+from reserve_pay_optimizer.policy.optimizer import PolicyConstrainedOptimizer
+from reserve_pay_optimizer.policy.risk import ReserveRiskPolicy, RiskProfile, built_in_policies
 from reserve_pay_optimizer.prediction.config import ModelConfig
 from reserve_pay_optimizer.prediction.dataset import (
     build_prediction_records,
@@ -31,6 +34,7 @@ from reserve_pay_optimizer.services.mobility_validation import (
     validate_mobility_transaction,
 )
 from reserve_pay_optimizer.services.optimizer_evaluation import evaluate_optimizer_strategies
+from reserve_pay_optimizer.services.policy_evaluation import evaluate_risk_profiles
 from reserve_pay_optimizer.simulation.config import SimulationConfig
 from reserve_pay_optimizer.simulation.generator import simulate_transactions
 from reserve_pay_optimizer.strategies.exact_estimate import ExactEstimateStrategy
@@ -135,6 +139,11 @@ def _parser() -> argparse.ArgumentParser:
     optimize.add_argument("--model", type=Path, required=True)
     optimize.add_argument("--file", type=Path, required=True)
     optimize.add_argument("--verbose", action="store_true", help="include the five best candidate scores")
+    optimize.add_argument(
+        "--risk-profile",
+        choices=[profile.value for profile in RiskProfile],
+        help="apply a Phase-6 merchant policy; omit to preserve unconstrained Phase-5 behavior",
+    )
     _add_optimization_arguments(optimize)
     evaluate_optimizer = subparsers.add_parser(
         "evaluate-optimizer",
@@ -143,6 +152,20 @@ def _parser() -> argparse.ArgumentParser:
     evaluate_optimizer.add_argument("--model", type=Path, required=True)
     evaluate_optimizer.add_argument("--file", type=Path, required=True)
     _add_optimization_arguments(evaluate_optimizer)
+    compare_profiles = subparsers.add_parser(
+        "compare-risk-profiles",
+        help="optimize one transaction under aggressive, balanced, and conservative policies",
+    )
+    compare_profiles.add_argument("--model", type=Path, required=True)
+    compare_profiles.add_argument("--file", type=Path, required=True)
+    _add_optimization_arguments(compare_profiles)
+    evaluate_profiles = subparsers.add_parser(
+        "evaluate-risk-profiles",
+        help="compare baselines and all three merchant policies on completed records",
+    )
+    evaluate_profiles.add_argument("--model", type=Path, required=True)
+    evaluate_profiles.add_argument("--file", type=Path, required=True)
+    _add_optimization_arguments(evaluate_profiles)
     return parser
 
 
@@ -236,7 +259,14 @@ def main(argv: Sequence[str] | None = None) -> int:
                 payload = _load_payload(stream)
             context = parse_mobility_transaction(payload)  # type: ignore[arg-type]
             optimizer = ReserveBlockOptimizer(_optimization_config(args))
-            optimization = optimizer.optimize(context, artifact.model.predict(context))
+            prediction = artifact.model.predict(context)
+            if args.risk_profile is None:
+                optimization = optimizer.optimize(context, prediction)
+            else:
+                policy = ReserveRiskPolicy.for_profile(RiskProfile(args.risk_profile))
+                optimization = PolicyConstrainedOptimizer(optimizer).optimize(
+                    context, prediction, policy
+                )
             result = optimization.to_dict(include_candidates=args.verbose)
         elif args.command == "evaluate-optimizer":
             artifact = load_predictor_artifact(args.model)
@@ -244,6 +274,40 @@ def main(argv: Sequence[str] | None = None) -> int:
                 payload = _load_payload(stream)
             transactions, outcomes = parse_evaluation_dataset(payload)  # type: ignore[arg-type]
             evaluation = evaluate_optimizer_strategies(
+                transactions,
+                outcomes,
+                artifact.model,
+                ReserveBlockOptimizer(_optimization_config(args)),
+            )
+            result = evaluation.to_dict()
+            result.update({"domain": MOBILITY_DOMAIN.value, "currency": SUPPORTED_CURRENCY.value})
+        elif args.command == "compare-risk-profiles":
+            artifact = load_predictor_artifact(args.model)
+            with args.file.open("r", encoding="utf-8") as stream:
+                payload = _load_payload(stream)
+            context = parse_mobility_transaction(payload)  # type: ignore[arg-type]
+            prediction = artifact.model.predict(context)
+            policy_optimizer = PolicyConstrainedOptimizer(
+                ReserveBlockOptimizer(_optimization_config(args))
+            )
+            results = tuple(
+                policy_optimizer.optimize(context, prediction, policy)
+                for policy in built_in_policies()
+            )
+            result = {
+                "transaction_id": context.transaction_id,
+                "model_version": prediction.model_version,
+                "profiles": {
+                    item.risk_policy.profile.value: item.to_dict()
+                    for item in results
+                },
+            }
+        elif args.command == "evaluate-risk-profiles":
+            artifact = load_predictor_artifact(args.model)
+            with args.file.open("r", encoding="utf-8") as stream:
+                payload = _load_payload(stream)
+            transactions, outcomes = parse_evaluation_dataset(payload)  # type: ignore[arg-type]
+            evaluation = evaluate_risk_profiles(
                 transactions,
                 outcomes,
                 artifact.model,
@@ -283,6 +347,9 @@ def main(argv: Sequence[str] | None = None) -> int:
         return 2
     except DomainValidationError as exc:
         print(json.dumps(_error_response(exc), indent=2, sort_keys=True))
+        return 2
+    except PolicyTargetNotReachable as exc:
+        print(json.dumps(exc.to_dict(), indent=2, sort_keys=True))
         return 2
     except (OSError, ValueError, RuntimeError, KeyError) as exc:
         print(json.dumps({"status": "error", "message": str(exc)}, indent=2, sort_keys=True))

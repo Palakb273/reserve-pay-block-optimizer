@@ -1,6 +1,6 @@
 """Reserve Pay Block Optimizer package."""
 
-__version__ = "0.5.0"
+__version__ = "0.6.0"
 
 from reserve_pay_optimizer.domain.errors import DomainValidationError, ValidationIssue
 from reserve_pay_optimizer.domain.evaluation import (
@@ -18,6 +18,9 @@ from reserve_pay_optimizer.domain.types import Currency, SupportedCity, Transact
 from reserve_pay_optimizer.optimization.config import OptimizationConfig
 from reserve_pay_optimizer.optimization.models import OptimizationResult
 from reserve_pay_optimizer.optimization.optimizer import ReserveBlockOptimizer
+from reserve_pay_optimizer.policy.models import PolicyOptimizationResult
+from reserve_pay_optimizer.policy.optimizer import PolicyConstrainedOptimizer
+from reserve_pay_optimizer.policy.risk import ReserveRiskPolicy, RiskProfile
 from reserve_pay_optimizer.prediction.config import MODEL_VERSION, ModelConfig
 from reserve_pay_optimizer.prediction.distribution import FareDistributionPrediction
 from reserve_pay_optimizer.prediction.model import ConditionalFareDistributionModel
@@ -50,7 +53,11 @@ __all__ = [
     "OptimizationConfig",
     "OptimizationResult",
     "OptimizedReserveStrategy",
+    "PolicyConstrainedOptimizer",
+    "PolicyOptimizationResult",
+    "ReserveRiskPolicy",
     "ReserveBlockOptimizer",
+    "RiskProfile",
     "RideTransactionContext",
     "RideTransactionOutcome",
     "ReserveDecision",

@@ -11,12 +11,14 @@ from reserve_pay_optimizer.services.mobility_validation import (
     validate_mobility_transaction,
 )
 from reserve_pay_optimizer.services.optimizer_evaluation import evaluate_optimizer_strategies
+from reserve_pay_optimizer.services.policy_evaluation import evaluate_risk_profiles
 
 __all__ = [
     "aggregate_evaluations",
     "compare_strategies",
     "evaluate_transaction",
     "evaluate_optimizer_strategies",
+    "evaluate_risk_profiles",
     "parse_evaluation_dataset",
     "parse_mobility_transaction",
     "validate_mobility_transaction",
