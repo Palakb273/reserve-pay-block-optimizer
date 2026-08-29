@@ -1,0 +1,96 @@
+{
+  "history": {
+    "metadata": {
+      "purpose": "Phase-8 frozen customer-history demo"
+    },
+    "records": [
+      {
+        "transaction": {
+          "transaction_id": "DEMO-HISTORY-001",
+          "customer_id": "C-DYNAMIC",
+          "estimated_amount_paise": 56000,
+          "city": "hyderabad",
+          "distance_km": 15.2,
+          "estimated_duration_minutes": 36,
+          "surge_multiplier": 1.0,
+          "timestamp": "2026-12-01T10:00:00+05:30"
+        },
+        "outcome": {
+          "transaction_id": "DEMO-HISTORY-001",
+          "actual_amount_paise": 56500,
+          "completed_at": "2026-12-01T10:42:00+05:30"
+        }
+      },
+      {
+        "transaction": {
+          "transaction_id": "DEMO-HISTORY-002",
+          "customer_id": "C-DYNAMIC",
+          "estimated_amount_paise": 61000,
+          "city": "hyderabad",
+          "distance_km": 16.4,
+          "estimated_duration_minutes": 39,
+          "surge_multiplier": 1.0,
+          "timestamp": "2026-12-08T11:00:00+05:30"
+        },
+        "outcome": {
+          "transaction_id": "DEMO-HISTORY-002",
+          "actual_amount_paise": 62800,
+          "completed_at": "2026-12-08T11:46:00+05:30"
+        }
+      },
+      {
+        "transaction": {
+          "transaction_id": "DEMO-HISTORY-003",
+          "customer_id": "C-DYNAMIC",
+          "estimated_amount_paise": 59000,
+          "city": "hyderabad",
+          "distance_km": 15.9,
+          "estimated_duration_minutes": 38,
+          "surge_multiplier": 1.0,
+          "timestamp": "2026-12-15T12:00:00+05:30"
+        },
+        "outcome": {
+          "transaction_id": "DEMO-HISTORY-003",
+          "actual_amount_paise": 60400,
+          "completed_at": "2026-12-15T12:45:00+05:30"
+        }
+      }
+    ]
+  },
+  "initial_transaction": {
+    "transaction_id": "DYNAMIC-DEMO-001",
+    "customer_id": "C-DYNAMIC",
+    "estimated_amount_paise": 65000,
+    "city": "hyderabad",
+    "distance_km": 18.4,
+    "estimated_duration_minutes": 42,
+    "surge_multiplier": 1.18,
+    "timestamp": "2027-01-15T18:30:00+05:30"
+  },
+  "updates": [
+    {
+      "event_id": "DYNAMIC-DEMO-001-U1",
+      "transaction_id": "DYNAMIC-DEMO-001",
+      "sequence_number": 1,
+      "observed_at": "2027-01-15T18:42:00+05:30",
+      "reason": "traffic_change",
+      "revised_estimated_amount_paise": 71000,
+      "revised_estimated_duration_minutes": 54
+    },
+    {
+      "event_id": "DYNAMIC-DEMO-001-U2",
+      "transaction_id": "DYNAMIC-DEMO-001",
+      "sequence_number": 2,
+      "observed_at": "2027-01-15T18:55:00+05:30",
+      "reason": "route_change",
+      "revised_estimated_amount_paise": 78000,
+      "revised_distance_km": 22.6,
+      "revised_estimated_duration_minutes": 66
+    }
+  ],
+  "outcome": {
+    "transaction_id": "DYNAMIC-DEMO-001",
+    "actual_amount_paise": 79500,
+    "completed_at": "2027-01-15T19:42:00+05:30"
+  }
+}

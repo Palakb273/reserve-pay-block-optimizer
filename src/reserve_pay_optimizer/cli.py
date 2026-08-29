@@ -12,6 +12,17 @@ from typing import Sequence, TextIO
 from reserve_pay_optimizer.config import MOBILITY_DOMAIN, SUPPORTED_CURRENCY
 from reserve_pay_optimizer.domain.errors import DomainValidationError, ValidationIssue
 from reserve_pay_optimizer.domain.evaluation import format_ratio
+from reserve_pay_optimizer.domain.money import Money
+from reserve_pay_optimizer.dynamic.errors import DynamicSessionError
+from reserve_pay_optimizer.dynamic.evaluation import evaluate_dynamic_reoptimization
+from reserve_pay_optimizer.dynamic.serialization import (
+    parse_dynamic_dataset,
+    parse_dynamic_scenario,
+)
+from reserve_pay_optimizer.dynamic.service import DynamicRideService
+from reserve_pay_optimizer.dynamic.simulation import simulate_dynamic_transactions
+from reserve_pay_optimizer.explainability.models import ExplanationLevel
+from reserve_pay_optimizer.explainability.service import ExplanationService
 from reserve_pay_optimizer.optimization.config import OptimizationConfig
 from reserve_pay_optimizer.optimization.optimizer import ReserveBlockOptimizer
 from reserve_pay_optimizer.policy.errors import PolicyTargetNotReachable
@@ -237,6 +248,80 @@ def _parser() -> argparse.ArgumentParser:
         default=RiskProfile.BALANCED.value,
     )
     _add_optimization_arguments(compare_customers)
+    simulate_dynamic = subparsers.add_parser(
+        "simulate-dynamic-mobility",
+        help="generate deterministic rides with observable in-ride context updates",
+    )
+    simulate_dynamic.add_argument("--count", type=int, default=100)
+    simulate_dynamic.add_argument("--seed", type=int, default=202608)
+    simulate_dynamic.add_argument("--customer-pool-size", type=int, default=25)
+    simulate_dynamic.add_argument(
+        "--personalized",
+        action="store_true",
+        help="enable hidden synthetic customer behavior without exporting it",
+    )
+    simulate_dynamic.add_argument("--output", type=Path)
+    run_dynamic = subparsers.add_parser(
+        "run-dynamic-ride",
+        help="run one dynamic ride scenario without any payment-provider call",
+    )
+    run_dynamic.add_argument("--model", type=Path, required=True)
+    run_dynamic.add_argument("--base-model", type=Path, required=True)
+    run_dynamic.add_argument("--scenario", type=Path, required=True)
+    run_dynamic.add_argument(
+        "--risk-profile",
+        choices=[profile.value for profile in RiskProfile],
+        default=RiskProfile.BALANCED.value,
+    )
+    run_dynamic.add_argument(
+        "--auto-confirm",
+        action="store_true",
+        help="simulate successful authorization of each recommended increase",
+    )
+    run_dynamic.add_argument("--verbose", action="store_true")
+    run_dynamic.add_argument(
+        "--explain",
+        action="store_true",
+        help="attach deterministic structured and rendered explanations",
+    )
+    run_dynamic.add_argument(
+        "--detail",
+        choices=[level.value for level in ExplanationLevel],
+        default=ExplanationLevel.CONCISE.value,
+    )
+    _add_optimization_arguments(run_dynamic)
+    evaluate_dynamic = subparsers.add_parser(
+        "evaluate-dynamic-reoptimization",
+        help="compare static and dynamic personalized blocking on identical rides",
+    )
+    evaluate_dynamic.add_argument("--file", type=Path, required=True)
+    evaluate_dynamic.add_argument("--model", type=Path, required=True)
+    evaluate_dynamic.add_argument("--base-model", type=Path, required=True)
+    evaluate_dynamic.add_argument(
+        "--risk-profile",
+        choices=[profile.value for profile in RiskProfile],
+        default=RiskProfile.BALANCED.value,
+    )
+    _add_optimization_arguments(evaluate_dynamic)
+    explain_block = subparsers.add_parser(
+        "explain-block",
+        help="predict, optimize, and explain one already-computed reserve recommendation",
+    )
+    explain_block.add_argument("--model", type=Path, required=True)
+    explain_block.add_argument("--base-model", type=Path, required=True)
+    explain_block.add_argument("--history", type=Path, required=True)
+    explain_block.add_argument("--file", type=Path, required=True)
+    explain_block.add_argument(
+        "--risk-profile",
+        choices=[profile.value for profile in RiskProfile],
+        default=RiskProfile.BALANCED.value,
+    )
+    explain_block.add_argument(
+        "--detail",
+        choices=[level.value for level in ExplanationLevel],
+        default=ExplanationLevel.CONCISE.value,
+    )
+    _add_optimization_arguments(explain_block)
     return parser
 
 
@@ -258,7 +343,159 @@ def _error_response(error: DomainValidationError) -> dict[str, object]:
 def main(argv: Sequence[str] | None = None) -> int:
     args = _parser().parse_args(argv)
     try:
-        if args.command == "simulate-mobility":
+        if args.command == "simulate-dynamic-mobility":
+            config = SimulationConfig(
+                transaction_count=args.count,
+                seed=args.seed,
+                customer_pool_size=args.customer_pool_size,
+                customer_behavior_enabled=args.personalized,
+            )
+            dataset = simulate_dynamic_transactions(config)
+            serialized = dataset.to_dict()
+            if args.output is None:
+                result = serialized
+            else:
+                args.output.parent.mkdir(parents=True, exist_ok=True)
+                args.output.write_text(
+                    json.dumps(serialized, indent=2, sort_keys=True) + "\n",
+                    encoding="utf-8",
+                )
+                result = {
+                    "simulation_status": "complete",
+                    "output": str(args.output),
+                    **dataset.metadata,
+                }
+        elif args.command == "run-dynamic-ride":
+            with args.scenario.open("r", encoding="utf-8") as stream:
+                scenario_payload = _load_payload(stream)
+            record, history_contexts, history_outcomes = parse_dynamic_scenario(
+                scenario_payload  # type: ignore[arg-type]
+            )
+            personalized_artifact = load_personalized_artifact(args.model)
+            base_artifact = load_predictor_artifact(args.base_model)
+            predictor = PersonalizedFarePredictor(
+                base_artifact.model,
+                personalized_artifact.model,
+                InMemoryCustomerHistoryProvider(history_contexts, history_outcomes),
+            )
+            service = DynamicRideService(
+                predictor, ReserveBlockOptimizer(_optimization_config(args))
+            )
+            policy = ReserveRiskPolicy.for_profile(RiskProfile(args.risk_profile))
+            session = service.start_dynamic_session(record.initial_transaction, policy)
+            explanation_service = ExplanationService() if args.explain else None
+            initial = {
+                "estimated_amount_paise": session.initial_context.estimated_amount.amount_paise,
+                "q97_paise": session.initial_prediction.amount_for_quantile("0.97").amount_paise,
+                "q99_paise": session.initial_prediction.amount_for_quantile("0.99").amount_paise,
+                "recommended_and_assumed_authorized_block_paise": session.initial_authorized_block.amount_paise,
+                "prediction_mode": session.initial_prediction.prediction_mode,
+                "history_count": session.initial_prediction.history_count,
+            }
+            decisions = []
+            for update in record.updates:
+                application = service.apply_context_update(session, update)
+                session = application.session
+                decision = application.decision
+                confirmed = False
+                if args.auto_confirm and decision.additional_block_required.amount_paise > 0:
+                    confirmed_total = Money(
+                        session.current_authorized_block.amount_paise
+                        + decision.additional_block_required.amount_paise
+                    )
+                    session = service.confirm_block_authorized(
+                        session, decision, confirmed_total
+                    )
+                    confirmed = True
+                decision_output = {
+                    **decision.to_dict(verbose=args.verbose),
+                    "simulated_authorization_confirmed": confirmed,
+                    "authorized_block_after_event_paise": session.current_authorized_block.amount_paise,
+                }
+                if explanation_service is not None:
+                    decision_output["explanation"] = explanation_service.explain_dynamic_decision(
+                        session,
+                        decision,
+                        ExplanationLevel(args.detail),
+                    ).to_dict()
+                decisions.append(decision_output)
+            actual = record.outcome.actual_amount.amount_paise
+            result = {
+                "dynamic_run_status": "complete",
+                "transaction_id": session.transaction_id,
+                "risk_profile": policy.profile.value,
+                "auto_confirm": args.auto_confirm,
+                "payment_provider_called": False,
+                "initial": initial,
+                "updates": decisions,
+                "final_authorized_block_paise": session.current_authorized_block.amount_paise,
+                "session": session.to_dict(verbose=args.verbose),
+                "retrospective_outcome": {
+                    "actual_amount_paise": actual,
+                    "completed_at": record.outcome.completed_at.isoformat(),
+                    "static_initial_block_would_succeed": (
+                        session.initial_authorized_block.amount_paise >= actual
+                    ),
+                    "dynamic_final_block_would_succeed": (
+                        session.current_authorized_block.amount_paise >= actual
+                    ),
+                    "decision_time_use": False,
+                },
+            }
+            if explanation_service is not None:
+                result["explanation_validation_metrics"] = explanation_service.metrics.to_dict()
+        elif args.command == "evaluate-dynamic-reoptimization":
+            with args.file.open("r", encoding="utf-8") as stream:
+                dataset_payload = _load_payload(stream)
+            dataset = parse_dynamic_dataset(dataset_payload)  # type: ignore[arg-type]
+            personalized_artifact = load_personalized_artifact(args.model)
+            base_artifact = load_predictor_artifact(args.base_model)
+            provider = InMemoryCustomerHistoryProvider(
+                dataset.transactions, dataset.outcomes
+            )
+            predictor = PersonalizedFarePredictor(
+                base_artifact.model, personalized_artifact.model, provider
+            )
+            service = DynamicRideService(
+                predictor, ReserveBlockOptimizer(_optimization_config(args))
+            )
+            policy = ReserveRiskPolicy.for_profile(RiskProfile(args.risk_profile))
+            result = evaluate_dynamic_reoptimization(
+                dataset, service, policy
+            ).to_dict()
+            result["dataset_metadata"] = dataset.metadata
+        elif args.command == "explain-block":
+            personalized_artifact = load_personalized_artifact(args.model)
+            base_artifact = load_predictor_artifact(args.base_model)
+            with args.history.open("r", encoding="utf-8") as stream:
+                history_payload = _load_payload(stream)
+            history_contexts, history_outcomes = parse_evaluation_dataset(history_payload)  # type: ignore[arg-type]
+            predictor = PersonalizedFarePredictor(
+                base_artifact.model,
+                personalized_artifact.model,
+                InMemoryCustomerHistoryProvider(history_contexts, history_outcomes),
+            )
+            with args.file.open("r", encoding="utf-8") as stream:
+                transaction_payload = _load_payload(stream)
+            context = parse_mobility_transaction(transaction_payload)  # type: ignore[arg-type]
+            prediction = predictor.predict(context)
+            policy = ReserveRiskPolicy.for_profile(RiskProfile(args.risk_profile))
+            optimization = PolicyConstrainedOptimizer(
+                ReserveBlockOptimizer(_optimization_config(args))
+            ).optimize(context, prediction, policy)
+            explanation_service = ExplanationService()
+            explanation = explanation_service.explain_reserve_decision(
+                context,
+                prediction,
+                optimization,
+                ExplanationLevel(args.detail),
+            )
+            result = {
+                "decision": optimization.to_dict(include_candidates=False),
+                "explanation": explanation.to_dict(),
+                "explanation_validation_metrics": explanation_service.metrics.to_dict(),
+            }
+        elif args.command == "simulate-mobility":
             config_kwargs: dict[str, object] = {
                 "transaction_count": args.count,
                 "seed": args.seed,
@@ -555,6 +792,9 @@ def main(argv: Sequence[str] | None = None) -> int:
         return 2
     except DomainValidationError as exc:
         print(json.dumps(_error_response(exc), indent=2, sort_keys=True))
+        return 2
+    except DynamicSessionError as exc:
+        print(json.dumps(exc.to_dict(), indent=2, sort_keys=True))
         return 2
     except PolicyTargetNotReachable as exc:
         print(json.dumps(exc.to_dict(), indent=2, sort_keys=True))

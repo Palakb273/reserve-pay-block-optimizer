@@ -1,6 +1,6 @@
 """Reserve Pay Block Optimizer package."""
 
-__version__ = "0.7.0"
+__version__ = "0.9.0"
 
 from reserve_pay_optimizer.domain.errors import DomainValidationError, ValidationIssue
 from reserve_pay_optimizer.domain.evaluation import (
@@ -15,6 +15,25 @@ from reserve_pay_optimizer.domain.mobility import (
 from reserve_pay_optimizer.domain.money import Money
 from reserve_pay_optimizer.domain.reserve import ReserveDecision
 from reserve_pay_optimizer.domain.types import Currency, SupportedCity, TransactionDomain
+from reserve_pay_optimizer.dynamic.models import (
+    DynamicReoptimizationDecision,
+    DynamicRideSession,
+    RideContextUpdate,
+    RideUpdateReason,
+)
+from reserve_pay_optimizer.dynamic.service import DynamicRideService
+from reserve_pay_optimizer.dynamic.simulation import (
+    DynamicSimulationDataset,
+    DynamicSimulationRecord,
+    simulate_dynamic_transactions,
+)
+from reserve_pay_optimizer.explainability.models import (
+    DecisionExplanation,
+    DecisionType,
+    ExplanationLevel,
+    RenderedDecisionExplanation,
+)
+from reserve_pay_optimizer.explainability.service import ExplanationService
 from reserve_pay_optimizer.optimization.config import OptimizationConfig
 from reserve_pay_optimizer.optimization.models import OptimizationResult
 from reserve_pay_optimizer.optimization.optimizer import ReserveBlockOptimizer
@@ -60,7 +79,16 @@ __all__ = [
     "ConditionalFareDistributionModel",
     "CustomerHistoryFeatures",
     "DomainValidationError",
+    "DynamicReoptimizationDecision",
+    "DynamicRideService",
+    "DynamicRideSession",
+    "DynamicSimulationDataset",
+    "DynamicSimulationRecord",
+    "DecisionExplanation",
+    "DecisionType",
     "ExactEstimateStrategy",
+    "ExplanationLevel",
+    "ExplanationService",
     "FareModelConfig",
     "FareDistributionPrediction",
     "FixedBufferStrategy",
@@ -78,8 +106,11 @@ __all__ = [
     "PersonalizedFareDistributionPrediction",
     "PersonalizedFarePredictor",
     "ReserveRiskPolicy",
+    "RenderedDecisionExplanation",
     "ReserveBlockOptimizer",
     "RiskProfile",
+    "RideContextUpdate",
+    "RideUpdateReason",
     "RideTransactionContext",
     "RideTransactionOutcome",
     "ReserveDecision",
@@ -95,6 +126,7 @@ __all__ = [
     "InMemoryCustomerHistoryProvider",
     "calculate_customer_history_features",
     "simulate_transactions",
+    "simulate_dynamic_transactions",
     "validate_mobility_transaction",
     "__version__",
 ]

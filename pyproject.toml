@@ -4,8 +4,8 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "reserve-pay-block-optimizer"
-version = "0.7.0"
-description = "History-aware personalized reserve optimization for India mobility payments"
+version = "0.9.0"
+description = "Explainable dynamic reserve optimization for India mobility payments"
 readme = "README.md"
 requires-python = ">=3.11"
 dependencies = ["scikit-learn>=1.4,<2"]

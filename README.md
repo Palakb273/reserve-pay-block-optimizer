@@ -1,6 +1,6 @@
 # Reserve Pay Block Optimizer
 
-This Python 3.11+ project defines, simulates, predicts, and optimizes reserve blocks for India-first mobility payments. Phase 4 predicts conditional fare uncertainty, Phase 5 makes a transparent financial blocking decision, Phase 6 applies merchant risk policies, and Phase 7 personalizes the predicted distribution using eligible completed customer history.
+This Python 3.11+ project defines, simulates, predicts, optimizes, dynamically revises, and explains reserve blocks for India-first mobility payments. Phase 4 predicts conditional fare uncertainty, Phase 5 makes a transparent financial blocking decision, Phase 6 applies merchant risk policies, Phase 7 personalizes from eligible completed customer history, Phase 8 re-optimizes from legitimate observable in-ride changes, and Phase 9 produces auditable explanations without changing any decision.
 
 ## Problem
 
@@ -752,27 +752,190 @@ The checked-in three-transaction fixture produces these calculated metrics:
 
 The same three transaction IDs and total actual amount are used for each strategy.
 
+## Phase 8 — Dynamic Re-Optimization
+
+The reserve recommendation is no longer fixed for the whole ride. When a ride platform supplies legitimate revised projections, Phase 8 follows the existing decision path again:
+
+```text
+rebuild decision-time context
+        ↓
+base/personalized distribution prediction
+        ↓
+unchanged Phase-5 objective and Phase-6 policy constraint
+        ↓
+new recommended target block
+        ↓
+compare with currently authorized block
+```
+
+The dynamic service accepts only an initial `RideTransactionContext`, a frozen `CustomerHistoryFeatures` snapshot, a fixed session risk profile, and typed `RideContextUpdate` events. It never receives the ride outcome. Mutable update fields are revised estimate, projected total distance, projected total duration, and surge multiplier. Transaction ID, customer ID, city, ride-start timestamp, domain, and INR currency stay immutable. The original context timestamp remains the ride start; every event has a separate `observed_at` timestamp.
+
+Three monetary values have deliberately different meanings:
+
+```text
+current_authorized_block
+    application state already considered authorized
+
+recommended_target_block
+    total reserve currently recommended by prediction + optimization
+
+additional_block_required
+    max(recommended_target_block - current_authorized_block, 0)
+```
+
+Re-optimization emits a recommendation and does not mutate `current_authorized_block`. Only `confirm_block_authorized` can commit the exact requested total to session state. This confirmation is application/domain state only: it does not mean a bank, UPI provider, Razorpay, or any payment network approved funds. A decreasing recommendation produces zero additional reserve; Phase 8 never releases an active block.
+
+### Ordering, versions, idempotency, and audit
+
+- Sessions start at version 0; every accepted context update increments the version.
+- Sequence numbers must be contiguous (`1, 2, 3, ...`) and event timestamps must increase strictly after ride start.
+- Confirmations must reference the latest decision at the current session version and authorize exactly the requested total. Stale or mismatched confirmations are rejected.
+- Replaying the same `event_id` with the identical payload returns the existing decision without another mutation. Reusing it with a different payload raises a structured conflict.
+- The immutable audit trail records session start, context updates, re-optimization decisions, and simulated/application confirmations. It contains no final outcome or simulator latent state.
+
+Customer history is calculated as of ride start and frozen for that session. Later ride completions, the active ride's partial behavior, and future outcomes cannot change its personalization features. Cold-start sessions continue to use the Phase-7 base-model fallback; eligible sessions continue to use the personalized model. The merchant risk profile is fixed for the session.
+
+### Dynamic synthetic data
+
+`simulate-dynamic-mobility` first calls the unchanged Phase-3/7 simulator and then deterministically creates zero to three observable projected updates per ride. Revised synthetic estimates use the documented synthetic fare formula and projected distance/duration/surge values that partially converge toward the completed synthetic trajectory. Hidden route/traffic noise and hidden customer profiles are never exported. Existing `simulate-mobility` output remains unchanged.
+
+Generate a reproducible dynamic dataset:
+
+```powershell
+python -m reserve_pay_optimizer simulate-dynamic-mobility `
+  --count 10000 `
+  --seed 202608 `
+  --customer-pool-size 1000 `
+  --personalized `
+  --output dynamic_transactions.json
+```
+
+Run the checked-in timeline. `--auto-confirm` is a demo convenience that assumes each recommended increase was successfully authorized in application state; it performs no external call:
+
+```powershell
+python -m reserve_pay_optimizer run-dynamic-ride `
+  --model artifacts/prediction/fare_distribution_personalized_v1 `
+  --base-model artifacts/prediction/fare_distribution_v1 `
+  --scenario examples/dynamic_reoptimization.json `
+  --risk-profile balanced `
+  --auto-confirm `
+  --verbose
+```
+
+Omit `--auto-confirm` to produce every recommendation while leaving the authorized block at its initial value.
+
+The deterministic demo currently calculates this timeline from the checked-in models:
+
+```text
+18:30  estimate 65,000 paise; Q97 73,465; Q99 75,196
+       initial target/authorized block 75,196
+
+18:42  traffic update; estimate 71,000; Q97 81,314; Q99 82,469
+       target 82,469; additional 7,273; simulated confirmation → 82,469
+
+18:55  route update; estimate 78,000; Q97 90,854; Q99 98,669
+       target 90,854; additional 8,385; simulated confirmation → 90,854
+
+19:42  final synthetic outcome 79,500 (retrospective evaluation only)
+       static initial block fails; dynamically confirmed final block succeeds
+```
+
+Compare static initial blocking with dynamic blocking on exactly the same rides and outcomes:
+
+```powershell
+python -m reserve_pay_optimizer evaluate-dynamic-reoptimization `
+  --file dynamic_transactions.json `
+  --model artifacts/prediction/fare_distribution_personalized_v1 `
+  --base-model artifacts/prediction/fare_distribution_v1 `
+  --risk-profile balanced
+```
+
+The report includes realized success/under-block metrics, average initial/final block, additional-block metrics, trigger rates, re-optimization counts, final excess, under-block amount, and capital efficiency. It always states this evaluation assumption explicitly:
+
+> Dynamic evaluation assumes recommended additional block requests succeed. No real Razorpay authorization is performed.
+
+## Phase 9 — Explainable AI
+
+```text
+The ML model predicts.
+The optimizer decides.
+The explanation layer communicates why.
+```
+
+The authoritative `DecisionExplanation` is built only after prediction, policy-constrained optimization, or dynamic re-optimization has finished. It contains the exact selected block, Q50/Q90/Q95/Q97/Q99, modeled coverage, merchant policy threshold, expected excess, friction, objective components, up to five best candidates, prediction mode, model version, and eligible aggregated customer history. Dynamic evidence additionally contains only changed fields, previous/revised quantiles, previous/new target, current authorized block, the exact additional-block formula, and application confirmation status.
+
+> The LLM is never used to calculate or modify the recommended reserve amount.
+
+> Explanations use only facts produced by the deterministic prediction, optimization, policy and dynamic-decision layers.
+
+> Current models and explanation evidence are based on synthetic mobility data.
+
+### Evidence and probability language
+
+Upper quantiles are described as increasingly conservative modeled estimates, never guarantees. A Balanced target of 97% is explained as the minimum feasible modeled coverage. It does not necessarily select Q97: the unchanged Phase-5 objective can select a higher compliant candidate when that candidate has the lowest configured combination of under-block risk, expected unused reserve, and customer friction.
+
+Factors are factual context, not precise causal attribution. The system can state that duration changed from 42 to 55 minutes and Q97 moved from one calculated amount to another. It never fabricates a rupee decomposition claiming traffic, surge, policy, or history each caused an exact amount.
+
+Personalized evidence includes only completed-ride count, mean fare ratio, fare-ratio standard deviation, overrun rate, and mean positive overrun. It excludes customer IDs as model factors, raw ride lists, demographics, hidden simulator profiles, pricing noise, and outcomes. Cold-start explanations explicitly state that the base model was selected because fewer than three eligible rides were available.
+
+### Rendering and optional generated text
+
+`TemplateExplanationRenderer` works deterministically and offline in `concise` and `detailed` modes. The same structured evidence produces identical text and a stable SHA-256 `explanation_id`; a changed financial decision changes that identifier.
+
+The optional `ExplanationTextGenerator` protocol is provider-neutral and has no SDK dependency. It receives only serialized `DecisionExplanation` facts plus guardrails that prohibit recalculation, guarantees, invented attribution, production-policy claims, customer labeling, and false authorization language. Generated JSON must copy transaction ID, selected block, modeled probability, and authorization status exactly. Missing fields, altered numbers, oversized output, invalid JSON, privacy violations, or provider exceptions automatically fall back to the template renderer. Explanation failure cannot alter or invalidate the existing financial result.
+
+Both structured facts and rendered text are returned. Validation metrics report factual counts only: explanations generated, valid structured explanations, numeric consistency, fallbacks, and generated-text failures. There is no synthetic “explainability score.”
+
+Explain one personalized reserve recommendation:
+
+```powershell
+python -m reserve_pay_optimizer explain-block `
+  --model artifacts/prediction/fare_distribution_personalized_v1 `
+  --base-model artifacts/prediction/fare_distribution_v1 `
+  --history examples/personalization_stable_history.json `
+  --file examples/personalization_current_ride.json `
+  --risk-profile balanced `
+  --detail detailed
+```
+
+Attach an explanation to every dynamic event:
+
+```powershell
+python -m reserve_pay_optimizer run-dynamic-ride `
+  --model artifacts/prediction/fare_distribution_personalized_v1 `
+  --base-model artifacts/prediction/fare_distribution_v1 `
+  --scenario examples/dynamic_reoptimization.json `
+  --risk-profile balanced `
+  --auto-confirm `
+  --explain `
+  --detail detailed `
+  --verbose
+```
+
+Without `--auto-confirm`, dynamic text says the additional amount is only recommended. With it, text says confirmation occurred only in simulated/application state and that no payment provider was called.
+
 ## Tests
 
 ```powershell
 python -m unittest discover -s tests -v
 ```
 
-The suite covers every Phase 1–6 invariant plus hand-computable history formulas, future/current/overlapping-ride leakage prevention, no-ID feature schemas, cold-start routing, chronological splitting, hidden simulator boundaries, personalized training/persistence, monotonic predictions, policy integration, same-ride behavioral differentiation, and Phase 7 CLI workflows.
+The suite covers every Phase 1–8 invariant plus static, personalized, cold-start, and dynamic evidence; financial fact consistency; Balanced-minimum/Q99-selection wording; candidate and objective evidence; privacy; no outcome leakage; deterministic text and fingerprints; provider-neutral prompt inputs; valid fake-generated output; invalid-response and exception fallback; explanation metrics; and Phase 9 CLI workflows.
 
 ## Explicitly not implemented
 
-Phase 7 adds only customer transaction-history personalization and does not contain:
+Phase 9 adds deterministic structured explanation and an optional provider-neutral text-generation boundary only. It does not contain:
 
 - production data or claims that synthetic city profiles are measured statistics;
 - TensorFlow, PyTorch, XGBoost, LightGBM, or an LLM SDK;
 - merchant personalization;
-- dynamic re-optimization;
-- LLM explanations or AI agents;
+- a vendor LLM SDK, live generated-text provider, tool-calling agent, or agent framework;
 - Razorpay API calls;
+- `createBlock`, `debitBlock`, `releaseBlock`, or payment authorization/retry handling;
+- mid-ride release recommendations;
 - a frontend or dashboard;
 - production backtesting data.
 
-## What remains for Phase 8
+## What remains for Phase 10
 
-Phase 8 may add explicit in-ride dynamic re-optimization when new traffic, route, or duration information becomes legitimately available. Merchant-specific learning, explanation agents, Razorpay calls, additional-block execution, and UI remain later phases. Any future work must preserve event-time leakage boundaries and continue treating probabilities as estimates rather than guarantees.
+Phase 10 may add the Razorpay Reserve Pay adapter and real authorization-state integration. `createBlock`, `debitBlock`, `releaseBlock`, status lookup, credentials, retries, payment-provider failures, release flows, agents, and UI remain unimplemented. Any future phase must preserve the current decision/explanation boundary, event-time leakage protections, and estimated-probability terminology.
