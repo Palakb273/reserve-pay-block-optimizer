@@ -4,8 +4,8 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "reserve-pay-block-optimizer"
-version = "0.13.0"
-description = "Interactive reserve optimization dashboard for India mobility payments"
+version = "0.14.0"
+description = "Evidence-backed reserve optimization for India mobility payments"
 readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [

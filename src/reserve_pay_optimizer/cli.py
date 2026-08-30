@@ -377,6 +377,38 @@ def _parser() -> argparse.ArgumentParser:
         type=Path,
         default=Path("demo/evidence/dashboard_evidence.json"),
     )
+    final_evidence = subparsers.add_parser(
+        "prepare-final-evidence",
+        help="generate the authoritative Phase-13 evaluation artifact",
+    )
+    final_evidence.add_argument("--count", type=int, default=20_000)
+    final_evidence.add_argument("--seed", type=int, default=202_613)
+    final_evidence.add_argument("--customer-pool-size", type=int, default=5_000)
+    final_evidence.add_argument("--dynamic-count", type=int, default=5_000)
+    final_evidence.add_argument("--dynamic-seed", type=int, default=202_714)
+    final_evidence.add_argument("--agent-count", type=int, default=500)
+    final_evidence.add_argument("--bootstrap-samples", type=int, default=1_000)
+    final_evidence.add_argument("--bootstrap-seed", type=int, default=202_815)
+    final_evidence.add_argument(
+        "--risk-profile",
+        choices=[profile.value for profile in RiskProfile],
+        default=RiskProfile.BALANCED.value,
+    )
+    final_evidence.add_argument(
+        "--base-model",
+        type=Path,
+        default=Path("artifacts/prediction/fare_distribution_v1"),
+    )
+    final_evidence.add_argument(
+        "--model",
+        type=Path,
+        default=Path("artifacts/prediction/fare_distribution_personalized_v1"),
+    )
+    final_evidence.add_argument(
+        "--output",
+        type=Path,
+        default=Path("demo/evidence/final_evidence.json"),
+    )
     serve_dashboard = subparsers.add_parser(
         "serve-dashboard",
         help="serve the Phase-11 FastAPI dashboard adapter",
@@ -419,7 +451,38 @@ def _error_response(error: DomainValidationError) -> dict[str, object]:
 def main(argv: Sequence[str] | None = None) -> int:
     args = _parser().parse_args(argv)
     try:
-        if args.command == "prepare-dashboard-evidence":
+        if args.command == "prepare-final-evidence":
+            from reserve_pay_optimizer.evidence import (
+                FinalEvidenceConfig,
+                generate_final_evidence,
+            )
+
+            evidence_config = FinalEvidenceConfig(
+                transaction_count=args.count,
+                dataset_seed=args.seed,
+                customer_pool_size=args.customer_pool_size,
+                dynamic_seed=args.dynamic_seed,
+                dynamic_record_count=args.dynamic_count,
+                agent_record_count=args.agent_count,
+                bootstrap_seed=args.bootstrap_seed,
+                bootstrap_samples=args.bootstrap_samples,
+                primary_risk_profile=args.risk_profile,
+                base_model_path=args.base_model,
+                personalized_model_path=args.model,
+                output_path=args.output,
+            )
+            artifact = generate_final_evidence(evidence_config)
+            comparison = artifact["strategy_comparison"]
+            assert isinstance(comparison, dict)
+            result = {
+                "evidence_status": "complete",
+                "phase": 13,
+                "output": str(args.output),
+                "provenance": artifact["provenance"],
+                "strategy_metrics": comparison["metrics"],
+                "agent_consistency": artifact["agent_consistency"],
+            }
+        elif args.command == "prepare-dashboard-evidence":
             from reserve_pay_optimizer.web.evidence import prepare_dashboard_evidence
 
             if args.count <= 0:

@@ -1060,22 +1060,25 @@ The interface has exactly three primary screens:
 
 1. **Optimizer** — edits legitimate pre-ride context, customer-history demonstration profile, and merchant risk profile; displays the recommended block, modeled collection coverage, Q05–Q99 uncertainty, expected unused reserve, and deterministic explanation. Mock authorization is an explicit separate action.
 2. **What-if Simulator** — debounces distance, projected traffic/duration, surge, risk, and customer-profile changes; asks the backend to recompute both decisions; shows previous versus revised reserve and a dynamic ride timeline. The failure demo visibly preserves the previously authorized amount when an additional authorization fails.
-3. **Evidence** — reads one precomputed artifact generated from a fresh deterministic 10,000-ride simulator dataset and compares Exact Estimate, Fixed 20%, and Optimized Balanced on the same outcomes. It includes provenance, per-city diagnostics, personalization proof, dynamic evidence, block distribution, and excess-versus-success trade-off charts.
+3. **Evidence** — reads the authoritative Phase-13 artifact generated from a fresh deterministic 20,000-ride simulator cohort and compares Exact Estimate, Fixed 20%, and Optimized Balanced on the same outcomes. It includes provenance, calibration, confidence intervals, per-city diagnostics, personalization proof, dynamic evidence, agent consistency, block distribution, and excess-versus-success trade-off charts.
 
 Traffic is not a new model feature. The dashboard adapter deterministically maps the selected traffic band to projected duration, which is already a legal decision-time feature. Actual fare remains excluded until the post-ride settlement path.
 
 ### Reproducible evidence
 
-The checked-in `demo/evidence/dashboard_evidence.json` was generated, not hand-authored:
+The original Phase-11 `demo/evidence/dashboard_evidence.json` remains reproducible
+for regression tests. The live dashboard now defaults to the richer
+`demo/evidence/final_evidence.json` documented under Phase 13:
 
 ```powershell
-python -m reserve_pay_optimizer prepare-dashboard-evidence `
-  --count 10000 `
-  --seed 202611 `
-  --output demo/evidence/dashboard_evidence.json
+python -m reserve_pay_optimizer prepare-final-evidence
 ```
 
-It records the dataset count, seed, customer pool, predictor/model versions, Balanced policy target, project version, generation time, and canonical SHA-256 dataset fingerprint. All evidence is synthetic and is not production Razorpay, merchant, Uber, Ola, or measured city data. The observed test metrics are displayed honestly and need not equal the 97% modeled policy target exactly.
+It records the dataset count, seeds, customer pools, predictor/model versions,
+Balanced policy target, project version, bootstrap configuration, and canonical
+SHA-256 dataset fingerprint. All evidence is synthetic and is not production
+Razorpay, merchant, Uber, Ola, or measured city data. The observed test metrics
+are displayed honestly and need not equal the 97% modeled policy target exactly.
 
 ### Local startup
 
@@ -1211,7 +1214,7 @@ python -m reserve_pay_optimizer agent-decide `
 python -m unittest discover -s tests -v
 ```
 
-The Python test suite covers 216 tests across all phases (domain, simulator, baselines, prediction, optimization, policy, dynamic re-optimization, explainability, Reserve Pay execution, web API, and agent orchestration).
+The Python test suite covers 227 tests across all phases (domain, simulator, baselines, prediction, optimization, policy, dynamic re-optimization, explainability, Reserve Pay execution, web API, agent orchestration, and final evidence).
 
 Frontend checks run from `frontend`:
 
@@ -1231,7 +1234,62 @@ Phase 12 adds an AI agent orchestration layer. It does not contain:
 - a fourth top-level dashboard screen;
 - production database or distributed state storage.
 
-## What remains for Phase 13
+## Phase 13 — Evaluation and Evidence
 
-Phase 13 will introduce **Evaluation & Evidence** (comprehensive validation, benchmark comparisons, and publication-ready evidence artifacts). Phase 14 will produce the judging presentation.
+Phase 13 creates one authoritative, machine-readable artifact from a fresh
+synthetic evaluation cohort. It does not retrain either prediction model and it
+never evaluates on the models' training records.
 
+The default run uses:
+
+- 20,000 fresh static rides, seed `202613`, customer pool 5,000;
+- 5,000 fresh dynamic rides, seed `202714`;
+- 500 records for direct-versus-agent equivalence;
+- 1,000 seeded bootstrap resamples, seed `202815`;
+- the unchanged Personalized predictor and Balanced merchant policy.
+
+It reports Exact Estimate, Fixed 20%, and Optimized Balanced on the same outcomes;
+Q05–Q99 coverage and calibration; raw quantile crossing; median MAE and pinball
+loss; per-city strategy/calibration metrics; static-versus-dynamic evidence; and
+agent decision consistency. Collection-success rates include 95% Wilson intervals.
+Average excess-block amounts include deterministic 95% percentile-bootstrap
+intervals. These intervals quantify sampling uncertainty in the synthetic cohort;
+they do not turn model outputs into guarantees.
+
+Generate the artifact with:
+
+```powershell
+python -m reserve_pay_optimizer prepare-final-evidence `
+  --count 20000 `
+  --seed 202613 `
+  --customer-pool-size 5000 `
+  --dynamic-count 5000 `
+  --dynamic-seed 202714 `
+  --agent-count 500 `
+  --bootstrap-samples 1000 `
+  --bootstrap-seed 202815 `
+  --risk-profile balanced `
+  --base-model artifacts/prediction/fare_distribution_v1 `
+  --model artifacts/prediction/fare_distribution_personalized_v1 `
+  --output demo/evidence/final_evidence.json
+```
+
+The output records model metadata, library compatibility, every seed and cohort
+size, a canonical SHA-256 dataset fingerprint, and explicit limitations. Artifact
+validation fails closed if a required strategy, quantile, or zero-mismatch agent
+consistency result is absent.
+
+All current evidence uses simulator-generated India mobility records. No
+production Razorpay, merchant, Uber, Ola, or customer data is used, and observed
+coverage is not a promise of future performance.
+
+## Phase 14 — Final Demonstration
+
+The implementation is complete through the PRD's final demonstration phase. The
+checked-in [PRD phase status](docs/PRD_PHASE_STATUS.md) maps every phase to code
+and tests. The [3–5 minute demo runbook](docs/DEMO_RUNBOOK.md) presents the problem,
+uncertainty prediction, personalization, policy, dynamic failure invariant, mock
+execution boundary, and generated evidence without hard-coded roadmap examples.
+
+Project version is `0.14.0`. The dashboard remains exactly three screens and the
+agent remains an orchestration layer with no autonomous payment authority.

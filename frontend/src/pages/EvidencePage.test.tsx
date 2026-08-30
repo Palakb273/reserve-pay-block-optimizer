@@ -18,5 +18,8 @@ describe('EvidencePage', () => {
     expect(screen.getAllByText('97.1%').length).toBeGreaterThan(0)
     expect(screen.getByLabelText('Optimized block distribution chart')).toBeInTheDocument()
     expect(screen.getAllByText(/not production city statistics/).length).toBeGreaterThan(0)
+    expect(screen.getByText('Calibration on fresh rides')).toBeInTheDocument()
+    expect(screen.getByText('95% statistical confidence')).toBeInTheDocument()
+    expect(screen.getByText('0 mismatches')).toBeInTheDocument()
   })
 })

@@ -54,7 +54,7 @@ class DashboardApiTests(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.json(), {
             "status": "ok",
-            "version": "0.12.0",
+            "version": "0.14.0",
             "models_loaded": True,
         })
 

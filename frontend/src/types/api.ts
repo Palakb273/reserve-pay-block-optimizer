@@ -162,6 +162,31 @@ export interface EvidenceResponse {
     dynamic: StrategyEvidence
     dynamic_diagnostics: { average_initial_block_paise: number; average_final_authorized_block_paise: number; rides_requiring_additional_block_rate: string }
   }
+  strategy_comparison?: {
+    confidence_intervals_95: Record<string, {
+      collection_success_rate: { point_estimate: string; lower: string; upper: string; method: string }
+      average_excess_block_paise: { point_estimate: string; lower: string; upper: string; method: string; samples: number }
+    }>
+  }
+  prediction_calibration?: {
+    quantiles: Record<string, {
+      target_coverage: string
+      observed_coverage: string
+      calibration_error: string
+      absolute_calibration_error: string
+      pinball_loss_paise: string
+    }>
+    mean_pinball_loss_paise: string
+    median_mae_paise: string
+    raw_quantile_crossing: { record_count: number; record_frequency: string; adjacent_pair_count: number }
+    prediction_mode_counts: Record<string, number>
+  }
+  agent_consistency?: {
+    record_count: number
+    successful_runs: number
+    decision_mismatches: number
+    average_tool_calls: number
+  }
 }
 
 export interface ApiErrorBody {

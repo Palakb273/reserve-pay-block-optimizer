@@ -17,6 +17,8 @@ export function EvidencePage() {
   const optimized = evidence.strategies.optimized_balanced
   const histogram = evidence.block_distribution.map(bin => ({ label: `₹${Math.round(bin.lower_paise / 100)}`, count: bin.count }))
   const tradeoff = evidence.tradeoff_points.map(point => ({ name: strategyLabels[point.strategy as keyof typeof strategyLabels] ?? point.strategy, excess: point.average_excess_block_paise / 100, success: Number(point.collection_success_rate) * 100 }))
+  const calibrationQuantiles = ['0.50', '0.90', '0.95', '0.97', '0.99']
+  const confidence = evidence.strategy_comparison?.confidence_intervals_95
   return <section className="page evidence-page">
     <div className="page-heading"><div><span className="eyebrow">Reproducible backtest</span><h1>Evidence, not a hard-coded demo</h1><p>Three strategies evaluated on the same fresh, deterministic synthetic mobility dataset.</p></div><div className="provenance-chip"><Database size={17} /><div><strong>{evidence.provenance.record_count.toLocaleString('en-IN')} records</strong><span>Seed {evidence.provenance.seed}</span></div></div></div>
     <div className="provenance-bar"><span><Database size={15} /> {evidence.provenance.dataset}</span><span><Sparkles size={15} /> {evidence.provenance.predictor}</span><span><ShieldCheck size={15} /> Balanced / 97%</span><span>v{evidence.provenance.project_version}</span></div>
@@ -51,6 +53,20 @@ export function EvidencePage() {
         <div className="city-grid">{Object.entries(evidence.per_city).map(([city, value]) => <div key={city}><span>{titleCase(city)}</span><strong>{formatProbability(value.optimized_collection_success_rate)}</strong><small>{value.record_count.toLocaleString('en-IN')} rides · {formatMoney(value.optimized_average_excess_block_paise)} excess</small></div>)}</div>
       </article>
     </div>
+    {evidence.prediction_calibration && confidence && <div className="evidence-statistics">
+      <article className="panel calibration-panel">
+        <div className="panel-heading"><div><ShieldCheck size={19} /><div><h2>Calibration on fresh rides</h2><p>Observed coverage is empirical, not guaranteed</p></div></div></div>
+        <div className="table-wrap"><table><thead><tr><th>Quantile</th><th>Target</th><th>Observed</th><th>Error</th></tr></thead><tbody>
+          {calibrationQuantiles.map(key => { const metric = evidence.prediction_calibration!.quantiles[key]; return <tr key={key}><td>Q{Math.round(Number(key) * 100)}</td><td>{formatProbability(metric.target_coverage)}</td><td>{formatProbability(metric.observed_coverage)}</td><td>{(Number(metric.calibration_error) * 100).toFixed(2)} pts</td></tr> })}
+        </tbody></table></div>
+        <small>Raw crossing: {formatProbability(evidence.prediction_calibration.raw_quantile_crossing.record_frequency)} · Median MAE {formatMoney(Math.round(Number(evidence.prediction_calibration.median_mae_paise)))}</small>
+      </article>
+      <article className="panel confidence-panel">
+        <div className="panel-heading"><div><Fingerprint size={19} /><div><h2>95% statistical confidence</h2><p>Wilson success intervals and seeded bootstrap excess intervals</p></div></div></div>
+        <div className="confidence-list">{Object.keys(strategyLabels).map(key => { const interval = confidence[key]; return <div key={key}><span>{strategyLabels[key as keyof typeof strategyLabels]}</span><strong>{formatProbability(interval.collection_success_rate.lower)}–{formatProbability(interval.collection_success_rate.upper)}</strong><small>Average excess {formatMoney(Math.round(Number(interval.average_excess_block_paise.point_estimate)))} · {interval.average_excess_block_paise.samples.toLocaleString('en-IN')} resamples</small></div> })}</div>
+        {evidence.agent_consistency && <div className="agent-equivalence"><ShieldCheck size={15} /><b>{evidence.agent_consistency.decision_mismatches} mismatches</b><span>across {evidence.agent_consistency.record_count.toLocaleString('en-IN')} direct vs agent decisions</span></div>}
+      </article>
+    </div>}
     <div className="evidence-bottom">
       <article className="panel personalization-proof"><span className="eyebrow">Personalization evidence</span><h2>Same ride. Different completed history.</h2><div>{(['stable_history','overrun_prone'] as const).map(profile => <div key={profile}><span>{profile === 'stable_history' ? 'Stable history' : 'Overrun-prone history'}</span><strong>{formatMoney(evidence.personalization[profile].recommended_block_paise)}</strong><small>Q97 {formatMoney(evidence.personalization[profile].q97_paise)} · {evidence.personalization[profile].history_count} rides</small></div>)}</div></article>
       <article className="panel dynamic-proof"><span className="eyebrow">Dynamic evidence</span><h2>Static versus adaptive reserve</h2><div className="dynamic-proof-grid"><div><span>Static success</span><strong>{formatProbability(evidence.dynamic.static.collection_success_rate)}</strong></div><div><span>Dynamic success</span><strong>{formatProbability(evidence.dynamic.dynamic.collection_success_rate)}</strong></div><div><span>Average initial block</span><strong>{formatMoney(evidence.dynamic.dynamic_diagnostics.average_initial_block_paise)}</strong></div><div><span>Average final block</span><strong>{formatMoney(evidence.dynamic.dynamic_diagnostics.average_final_authorized_block_paise)}</strong></div></div><small>{formatProbability(evidence.dynamic.dynamic_diagnostics.rides_requiring_additional_block_rate)} of simulated rides required an increase.</small></article>

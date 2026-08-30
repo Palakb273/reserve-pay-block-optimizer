@@ -1,0 +1,925 @@
+{
+  "agent_consistency": {
+    "average_tool_calls": 4.0,
+    "decision_mismatches": 0,
+    "financial_equivalence_required": true,
+    "record_count": 500,
+    "successful_runs": 500
+  },
+  "block_distribution": [
+    {
+      "count": 1381,
+      "lower_paise": 11166,
+      "upper_paise": 18634
+    },
+    {
+      "count": 5628,
+      "lower_paise": 18635,
+      "upper_paise": 26103
+    },
+    {
+      "count": 5929,
+      "lower_paise": 26104,
+      "upper_paise": 33572
+    },
+    {
+      "count": 3926,
+      "lower_paise": 33573,
+      "upper_paise": 41041
+    },
+    {
+      "count": 1906,
+      "lower_paise": 41042,
+      "upper_paise": 48510
+    },
+    {
+      "count": 673,
+      "lower_paise": 48511,
+      "upper_paise": 55979
+    },
+    {
+      "count": 275,
+      "lower_paise": 55980,
+      "upper_paise": 63448
+    },
+    {
+      "count": 148,
+      "lower_paise": 63449,
+      "upper_paise": 70917
+    },
+    {
+      "count": 74,
+      "lower_paise": 70918,
+      "upper_paise": 78386
+    },
+    {
+      "count": 33,
+      "lower_paise": 78387,
+      "upper_paise": 85855
+    },
+    {
+      "count": 12,
+      "lower_paise": 85856,
+      "upper_paise": 93324
+    },
+    {
+      "count": 7,
+      "lower_paise": 93325,
+      "upper_paise": 100793
+    },
+    {
+      "count": 5,
+      "lower_paise": 100794,
+      "upper_paise": 108262
+    },
+    {
+      "count": 3,
+      "lower_paise": 108263,
+      "upper_paise": 115731
+    }
+  ],
+  "deltas": {
+    "average_excess_reduction_paise_vs_fixed_20": 1757,
+    "collection_success_percentage_points_vs_exact": "57.945"
+  },
+  "dynamic": {
+    "authorization_assumption": "Dynamic evaluation assumes recommended additional block requests succeed. No real Razorpay authorization is performed.",
+    "dynamic": {
+      "average_excess_block_paise": 3445,
+      "average_excess_block_ratio": "0.105040",
+      "average_under_block_paise": 25,
+      "capital_efficiency": "0.891752",
+      "collection_success_count": 4846,
+      "collection_success_rate": "0.969200",
+      "strategy": "dynamic_personalized_reoptimization",
+      "total_actual_amount_paise": 142014326,
+      "total_blocked_amount_paise": 159113876,
+      "transaction_count": 5000,
+      "under_block_count": 154,
+      "under_block_rate": "0.030800"
+    },
+    "dynamic_diagnostics": {
+      "average_additional_when_triggered_paise": 966,
+      "average_block_increase_count": "0.826800",
+      "average_final_authorized_block_paise": 31823,
+      "average_initial_block_paise": 31298,
+      "average_reoptimization_count": "1.520600",
+      "average_total_additional_block_paise": 525,
+      "current_block_remained_sufficient_rate": "0.456267",
+      "maximum_additional_amount_paise": 8331,
+      "median_additional_amount_paise": 324,
+      "rides_requiring_additional_block_rate": "0.543000",
+      "update_triggered_increase_rate": "0.543733"
+    },
+    "evaluation_scope": "same_rides_static_vs_dynamic",
+    "evaluation_status": "complete",
+    "record_count": 5000,
+    "risk_profile": "balanced",
+    "static": {
+      "average_excess_block_paise": 2974,
+      "average_excess_block_ratio": "0.091870",
+      "average_under_block_paise": 78,
+      "capital_efficiency": "0.904988",
+      "collection_success_count": 4595,
+      "collection_success_rate": "0.919000",
+      "strategy": "static_personalized_dynamic_comparison",
+      "total_actual_amount_paise": 142014326,
+      "total_blocked_amount_paise": 156491134,
+      "transaction_count": 5000,
+      "under_block_count": 405,
+      "under_block_rate": "0.081000"
+    },
+    "target_collection_probability": "0.970000"
+  },
+  "dynamic_reoptimization": {
+    "authorization_assumption": "Dynamic evaluation assumes recommended additional block requests succeed. No real Razorpay authorization is performed.",
+    "dataset_seed": 202714,
+    "dynamic": {
+      "average_excess_block_paise": 3445,
+      "average_excess_block_ratio": "0.105040",
+      "average_under_block_paise": 25,
+      "capital_efficiency": "0.891752",
+      "collection_success_count": 4846,
+      "collection_success_rate": "0.969200",
+      "strategy": "dynamic_personalized_reoptimization",
+      "total_actual_amount_paise": 142014326,
+      "total_blocked_amount_paise": 159113876,
+      "transaction_count": 5000,
+      "under_block_count": 154,
+      "under_block_rate": "0.030800"
+    },
+    "dynamic_diagnostics": {
+      "average_additional_when_triggered_paise": 966,
+      "average_block_increase_count": "0.826800",
+      "average_final_authorized_block_paise": 31823,
+      "average_initial_block_paise": 31298,
+      "average_reoptimization_count": "1.520600",
+      "average_total_additional_block_paise": 525,
+      "current_block_remained_sufficient_rate": "0.456267",
+      "maximum_additional_amount_paise": 8331,
+      "median_additional_amount_paise": 324,
+      "rides_requiring_additional_block_rate": "0.543000",
+      "update_triggered_increase_rate": "0.543733"
+    },
+    "evaluation_scope": "same_rides_static_vs_dynamic",
+    "evaluation_status": "complete",
+    "record_count": 5000,
+    "risk_profile": "balanced",
+    "static": {
+      "average_excess_block_paise": 2974,
+      "average_excess_block_ratio": "0.091870",
+      "average_under_block_paise": 78,
+      "capital_efficiency": "0.904988",
+      "collection_success_count": 4595,
+      "collection_success_rate": "0.919000",
+      "strategy": "static_personalized_dynamic_comparison",
+      "total_actual_amount_paise": 142014326,
+      "total_blocked_amount_paise": 156491134,
+      "transaction_count": 5000,
+      "under_block_count": 405,
+      "under_block_rate": "0.081000"
+    },
+    "target_collection_probability": "0.970000"
+  },
+  "evidence_status": "complete",
+  "limitations": [
+    "All evaluated rides are generated by the deterministic synthetic simulator.",
+    "No Razorpay, merchant, Uber, Ola, or production customer data is used.",
+    "Observed calibration and success rates are empirical estimates, not guarantees.",
+    "Dynamic evaluation assumes recommended mock authorizations succeed.",
+    "Merchant-history personalization is unavailable."
+  ],
+  "per_city": {
+    "bengaluru": {
+      "optimized_average_excess_block_paise": 4407,
+      "optimized_collection_success_rate": "0.923212",
+      "record_count": 2852,
+      "strategies": {
+        "exact_estimate": {
+          "average_excess_block_paise": 731,
+          "average_excess_block_ratio": "0.020779",
+          "average_under_block_paise": 1665,
+          "capital_efficiency": "0.978243",
+          "collection_success_count": 1084,
+          "collection_success_rate": "0.380084",
+          "strategy": "exact_estimate",
+          "total_actual_amount_paise": 98532387,
+          "total_blocked_amount_paise": 95870190,
+          "transaction_count": 2852,
+          "under_block_count": 1768,
+          "under_block_rate": "0.619916"
+        },
+        "fixed_buffer_20": {
+          "average_excess_block_paise": 5834,
+          "average_excess_block_ratio": "0.144132",
+          "average_under_block_paise": 44,
+          "capital_efficiency": "0.855380",
+          "collection_success_count": 2761,
+          "collection_success_rate": "0.968093",
+          "strategy": "fixed_buffer_20",
+          "total_actual_amount_paise": 98532387,
+          "total_blocked_amount_paise": 115044379,
+          "transaction_count": 2852,
+          "under_block_count": 91,
+          "under_block_rate": "0.031907"
+        },
+        "optimized_balanced": {
+          "average_excess_block_paise": 4407,
+          "average_excess_block_ratio": "0.109746",
+          "average_under_block_paise": 116,
+          "capital_efficiency": "0.886540",
+          "collection_success_count": 2633,
+          "collection_success_rate": "0.923212",
+          "strategy": "optimized_balanced",
+          "total_actual_amount_paise": 98532387,
+          "total_blocked_amount_paise": 110767905,
+          "transaction_count": 2852,
+          "under_block_count": 219,
+          "under_block_rate": "0.076788"
+        }
+      }
+    },
+    "chennai": {
+      "optimized_average_excess_block_paise": 3042,
+      "optimized_collection_success_rate": "0.936163",
+      "record_count": 2898,
+      "strategies": {
+        "exact_estimate": {
+          "average_excess_block_paise": 392,
+          "average_excess_block_ratio": "0.013514",
+          "average_under_block_paise": 1105,
+          "capital_efficiency": "0.986128",
+          "collection_success_count": 976,
+          "collection_success_rate": "0.336784",
+          "strategy": "exact_estimate",
+          "total_actual_amount_paise": 83898745,
+          "total_blocked_amount_paise": 81830597,
+          "transaction_count": 2898,
+          "under_block_count": 1922,
+          "under_block_rate": "0.663216"
+        },
+        "fixed_buffer_20": {
+          "average_excess_block_paise": 4938,
+          "average_excess_block_ratio": "0.145539",
+          "average_under_block_paise": 5,
+          "capital_efficiency": "0.854254",
+          "collection_success_count": 2885,
+          "collection_success_rate": "0.995514",
+          "strategy": "fixed_buffer_20",
+          "total_actual_amount_paise": 83898745,
+          "total_blocked_amount_paise": 98196813,
+          "transaction_count": 2898,
+          "under_block_count": 13,
+          "under_block_rate": "0.004486"
+        },
+        "optimized_balanced": {
+          "average_excess_block_paise": 3042,
+          "average_excess_block_ratio": "0.092222",
+          "average_under_block_paise": 54,
+          "capital_efficiency": "0.904752",
+          "collection_success_count": 2713,
+          "collection_success_rate": "0.936163",
+          "strategy": "optimized_balanced",
+          "total_actual_amount_paise": 83898745,
+          "total_blocked_amount_paise": 92558524,
+          "transaction_count": 2898,
+          "under_block_count": 185,
+          "under_block_rate": "0.063837"
+        }
+      }
+    },
+    "delhi": {
+      "optimized_average_excess_block_paise": 2777,
+      "optimized_collection_success_rate": "0.917043",
+      "record_count": 2881,
+      "strategies": {
+        "exact_estimate": {
+          "average_excess_block_paise": 362,
+          "average_excess_block_ratio": "0.012409",
+          "average_under_block_paise": 1172,
+          "capital_efficiency": "0.987309",
+          "collection_success_count": 957,
+          "collection_success_rate": "0.332176",
+          "strategy": "exact_estimate",
+          "total_actual_amount_paise": 84533336,
+          "total_blocked_amount_paise": 82200252,
+          "transaction_count": 2881,
+          "under_block_count": 1924,
+          "under_block_rate": "0.667824"
+        },
+        "fixed_buffer_20": {
+          "average_excess_block_paise": 4903,
+          "average_excess_block_ratio": "0.142935",
+          "average_under_block_paise": 7,
+          "capital_efficiency": "0.856793",
+          "collection_success_count": 2869,
+          "collection_success_rate": "0.995835",
+          "strategy": "fixed_buffer_20",
+          "total_actual_amount_paise": 84533336,
+          "total_blocked_amount_paise": 98640402,
+          "transaction_count": 2881,
+          "under_block_count": 12,
+          "under_block_rate": "0.004165"
+        },
+        "optimized_balanced": {
+          "average_excess_block_paise": 2777,
+          "average_excess_block_ratio": "0.084347",
+          "average_under_block_paise": 73,
+          "capital_efficiency": "0.913350",
+          "collection_success_count": 2642,
+          "collection_success_rate": "0.917043",
+          "strategy": "optimized_balanced",
+          "total_actual_amount_paise": 84533336,
+          "total_blocked_amount_paise": 92321281,
+          "transaction_count": 2881,
+          "under_block_count": 239,
+          "under_block_rate": "0.082957"
+        }
+      }
+    },
+    "hyderabad": {
+      "optimized_average_excess_block_paise": 2875,
+      "optimized_collection_success_rate": "0.926709",
+      "record_count": 2838,
+      "strategies": {
+        "exact_estimate": {
+          "average_excess_block_paise": 370,
+          "average_excess_block_ratio": "0.012871",
+          "average_under_block_paise": 1107,
+          "capital_efficiency": "0.986726",
+          "collection_success_count": 969,
+          "collection_success_rate": "0.341438",
+          "strategy": "exact_estimate",
+          "total_actual_amount_paise": 81260577,
+          "total_blocked_amount_paise": 79168609,
+          "transaction_count": 2838,
+          "under_block_count": 1869,
+          "under_block_rate": "0.658562"
+        },
+        "fixed_buffer_20": {
+          "average_excess_block_paise": 4846,
+          "average_excess_block_ratio": "0.144601",
+          "average_under_block_paise": 4,
+          "capital_efficiency": "0.855229",
+          "collection_success_count": 2827,
+          "collection_success_rate": "0.996124",
+          "strategy": "fixed_buffer_20",
+          "total_actual_amount_paise": 81260577,
+          "total_blocked_amount_paise": 95002431,
+          "transaction_count": 2838,
+          "under_block_count": 11,
+          "under_block_rate": "0.003876"
+        },
+        "optimized_balanced": {
+          "average_excess_block_paise": 2875,
+          "average_excess_block_ratio": "0.088811",
+          "average_under_block_paise": 60,
+          "capital_efficiency": "0.908584",
+          "collection_success_count": 2630,
+          "collection_success_rate": "0.926709",
+          "strategy": "optimized_balanced",
+          "total_actual_amount_paise": 81260577,
+          "total_blocked_amount_paise": 89249228,
+          "transaction_count": 2838,
+          "under_block_count": 208,
+          "under_block_rate": "0.073291"
+        }
+      }
+    },
+    "kolkata": {
+      "optimized_average_excess_block_paise": 2685,
+      "optimized_collection_success_rate": "0.933821",
+      "record_count": 2871,
+      "strategies": {
+        "exact_estimate": {
+          "average_excess_block_paise": 385,
+          "average_excess_block_ratio": "0.015311",
+          "average_under_block_paise": 995,
+          "capital_efficiency": "0.984219",
+          "collection_success_count": 1025,
+          "collection_success_rate": "0.357018",
+          "strategy": "exact_estimate",
+          "total_actual_amount_paise": 71876271,
+          "total_blocked_amount_paise": 70125015,
+          "transaction_count": 2871,
+          "under_block_count": 1846,
+          "under_block_rate": "0.642982"
+        },
+        "fixed_buffer_20": {
+          "average_excess_block_paise": 4282,
+          "average_excess_block_ratio": "0.145810",
+          "average_under_block_paise": 7,
+          "capital_efficiency": "0.853904",
+          "collection_success_count": 2850,
+          "collection_success_rate": "0.992685",
+          "strategy": "fixed_buffer_20",
+          "total_actual_amount_paise": 71876271,
+          "total_blocked_amount_paise": 84150109,
+          "transaction_count": 2871,
+          "under_block_count": 21,
+          "under_block_rate": "0.007315"
+        },
+        "optimized_balanced": {
+          "average_excess_block_paise": 2685,
+          "average_excess_block_ratio": "0.094179",
+          "average_under_block_paise": 58,
+          "capital_efficiency": "0.902948",
+          "collection_success_count": 2681,
+          "collection_success_rate": "0.933821",
+          "strategy": "optimized_balanced",
+          "total_actual_amount_paise": 71876271,
+          "total_blocked_amount_paise": 79418559,
+          "transaction_count": 2871,
+          "under_block_count": 190,
+          "under_block_rate": "0.066179"
+        }
+      }
+    },
+    "mumbai": {
+      "optimized_average_excess_block_paise": 3004,
+      "optimized_collection_success_rate": "0.918702",
+      "record_count": 2866,
+      "strategies": {
+        "exact_estimate": {
+          "average_excess_block_paise": 431,
+          "average_excess_block_ratio": "0.015383",
+          "average_under_block_paise": 1216,
+          "capital_efficiency": "0.984080",
+          "collection_success_count": 987,
+          "collection_success_rate": "0.344382",
+          "strategy": "exact_estimate",
+          "total_actual_amount_paise": 79802852,
+          "total_blocked_amount_paise": 77552257,
+          "transaction_count": 2866,
+          "under_block_count": 1879,
+          "under_block_rate": "0.655618"
+        },
+        "fixed_buffer_20": {
+          "average_excess_block_paise": 4643,
+          "average_excess_block_ratio": "0.142956",
+          "average_under_block_paise": 16,
+          "capital_efficiency": "0.857008",
+          "collection_success_count": 2826,
+          "collection_success_rate": "0.986043",
+          "strategy": "fixed_buffer_20",
+          "total_actual_amount_paise": 79802852,
+          "total_blocked_amount_paise": 93062849,
+          "transaction_count": 2866,
+          "under_block_count": 40,
+          "under_block_rate": "0.013957"
+        },
+        "optimized_balanced": {
+          "average_excess_block_paise": 3004,
+          "average_excess_block_ratio": "0.094799",
+          "average_under_block_paise": 93,
+          "capital_efficiency": "0.902322",
+          "collection_success_count": 2633,
+          "collection_success_rate": "0.918702",
+          "strategy": "optimized_balanced",
+          "total_actual_amount_paise": 79802852,
+          "total_blocked_amount_paise": 88147297,
+          "transaction_count": 2866,
+          "under_block_count": 233,
+          "under_block_rate": "0.081298"
+        }
+      }
+    },
+    "pune": {
+      "optimized_average_excess_block_paise": 2449,
+      "optimized_collection_success_rate": "0.921976",
+      "record_count": 2794,
+      "strategies": {
+        "exact_estimate": {
+          "average_excess_block_paise": 326,
+          "average_excess_block_ratio": "0.013375",
+          "average_under_block_paise": 1032,
+          "capital_efficiency": "0.986399",
+          "collection_success_count": 921,
+          "collection_success_rate": "0.329635",
+          "strategy": "exact_estimate",
+          "total_actual_amount_paise": 68855850,
+          "total_blocked_amount_paise": 66881684,
+          "transaction_count": 2794,
+          "under_block_count": 1873,
+          "under_block_rate": "0.670365"
+        },
+        "fixed_buffer_20": {
+          "average_excess_block_paise": 4085,
+          "average_excess_block_ratio": "0.142680",
+          "average_under_block_paise": 4,
+          "capital_efficiency": "0.857795",
+          "collection_success_count": 2777,
+          "collection_success_rate": "0.993916",
+          "strategy": "fixed_buffer_20",
+          "total_actual_amount_paise": 68855850,
+          "total_blocked_amount_paise": 80258124,
+          "transaction_count": 2794,
+          "under_block_count": 17,
+          "under_block_rate": "0.006084"
+        },
+        "optimized_balanced": {
+          "average_excess_block_paise": 2449,
+          "average_excess_block_ratio": "0.088759",
+          "average_under_block_paise": 58,
+          "capital_efficiency": "0.909419",
+          "collection_success_count": 2576,
+          "collection_success_rate": "0.921976",
+          "strategy": "optimized_balanced",
+          "total_actual_amount_paise": 68855850,
+          "total_blocked_amount_paise": 75535379,
+          "transaction_count": 2794,
+          "under_block_count": 218,
+          "under_block_rate": "0.078024"
+        }
+      }
+    }
+  },
+  "personalization": {
+    "overrun_prone": {
+      "history_count": 8,
+      "prediction_mode": "personalized",
+      "q97_paise": 78434,
+      "recommended_block_paise": 80207
+    },
+    "stable_history": {
+      "history_count": 8,
+      "prediction_mode": "personalized",
+      "q97_paise": 73133,
+      "recommended_block_paise": 74903
+    }
+  },
+  "phase": 13,
+  "prediction_calibration": {
+    "interpretation": "Observed coverage is empirical calibration on fresh synthetic data, not a guarantee for future transactions.",
+    "mean_pinball_loss_paise": "384.606036",
+    "median_mae_paise": "1527.283050",
+    "per_city": {
+      "bengaluru": {
+        "mean_pinball_loss_paise": "575.334367",
+        "q90_coverage": "0.774194",
+        "q95_coverage": "0.847826",
+        "q97_coverage": "0.883240",
+        "q99_coverage": "0.924965",
+        "test_record_count": 2852
+      },
+      "chennai": {
+        "mean_pinball_loss_paise": "353.687551",
+        "q90_coverage": "0.772947",
+        "q95_coverage": "0.839545",
+        "q97_coverage": "0.877157",
+        "q99_coverage": "0.936853",
+        "test_record_count": 2898
+      },
+      "delhi": {
+        "mean_pinball_loss_paise": "358.550165",
+        "q90_coverage": "0.749393",
+        "q95_coverage": "0.830614",
+        "q97_coverage": "0.865672",
+        "q99_coverage": "0.918431",
+        "test_record_count": 2881
+      },
+      "hyderabad": {
+        "mean_pinball_loss_paise": "344.548678",
+        "q90_coverage": "0.767089",
+        "q95_coverage": "0.835095",
+        "q97_coverage": "0.880197",
+        "q99_coverage": "0.926709",
+        "test_record_count": 2838
+      },
+      "kolkata": {
+        "mean_pinball_loss_paise": "331.532544",
+        "q90_coverage": "0.767677",
+        "q95_coverage": "0.836642",
+        "q97_coverage": "0.873912",
+        "q99_coverage": "0.933821",
+        "test_record_count": 2871
+      },
+      "mumbai": {
+        "mean_pinball_loss_paise": "402.709969",
+        "q90_coverage": "0.756106",
+        "q95_coverage": "0.826588",
+        "q97_coverage": "0.862177",
+        "q99_coverage": "0.919051",
+        "test_record_count": 2866
+      },
+      "pune": {
+        "mean_pinball_loss_paise": "325.508845",
+        "q90_coverage": "0.745526",
+        "q95_coverage": "0.811024",
+        "q97_coverage": "0.859699",
+        "q99_coverage": "0.921976",
+        "test_record_count": 2794
+      }
+    },
+    "prediction_interval_q05_q95": {
+      "average_width_paise": "4671.755200",
+      "empirical_coverage": "0.774700",
+      "nominal_coverage": "0.900000"
+    },
+    "prediction_mode_counts": {
+      "base": 13209,
+      "personalized": 6791
+    },
+    "quantiles": {
+      "0.05": {
+        "absolute_calibration_error": "0.008000",
+        "calibration_error": "0.008000",
+        "observed_coverage": "0.058000",
+        "pinball_loss_paise": "185.518260",
+        "target_coverage": "0.050000"
+      },
+      "0.10": {
+        "absolute_calibration_error": "0.000850",
+        "calibration_error": "-0.000850",
+        "observed_coverage": "0.099150",
+        "pinball_loss_paise": "314.832705",
+        "target_coverage": "0.100000"
+      },
+      "0.25": {
+        "absolute_calibration_error": "0.035300",
+        "calibration_error": "-0.035300",
+        "observed_coverage": "0.214700",
+        "pinball_loss_paise": "578.130650",
+        "target_coverage": "0.250000"
+      },
+      "0.50": {
+        "absolute_calibration_error": "0.099450",
+        "calibration_error": "-0.099450",
+        "observed_coverage": "0.400550",
+        "pinball_loss_paise": "763.641525",
+        "target_coverage": "0.500000"
+      },
+      "0.75": {
+        "absolute_calibration_error": "0.146200",
+        "calibration_error": "-0.146200",
+        "observed_coverage": "0.603800",
+        "pinball_loss_paise": "662.350500",
+        "target_coverage": "0.750000"
+      },
+      "0.90": {
+        "absolute_calibration_error": "0.138100",
+        "calibration_error": "-0.138100",
+        "observed_coverage": "0.761900",
+        "pinball_loss_paise": "418.348880",
+        "target_coverage": "0.900000"
+      },
+      "0.93": {
+        "absolute_calibration_error": "0.129550",
+        "calibration_error": "-0.129550",
+        "observed_coverage": "0.800450",
+        "pinball_loss_paise": "340.603020",
+        "target_coverage": "0.930000"
+      },
+      "0.95": {
+        "absolute_calibration_error": "0.117450",
+        "calibration_error": "-0.117450",
+        "observed_coverage": "0.832550",
+        "pinball_loss_paise": "278.211600",
+        "target_coverage": "0.950000"
+      },
+      "0.97": {
+        "absolute_calibration_error": "0.098250",
+        "calibration_error": "-0.098250",
+        "observed_coverage": "0.871750",
+        "pinball_loss_paise": "202.319802",
+        "target_coverage": "0.970000"
+      },
+      "0.99": {
+        "absolute_calibration_error": "0.064000",
+        "calibration_error": "-0.064000",
+        "observed_coverage": "0.926000",
+        "pinball_loss_paise": "102.103421",
+        "target_coverage": "0.990000"
+      }
+    },
+    "raw_quantile_crossing": {
+      "adjacent_pair_count": 980,
+      "record_count": 940,
+      "record_frequency": "0.047000"
+    },
+    "record_count": 20000
+  },
+  "provenance": {
+    "base_model": {
+      "dataset_fingerprint_sha256": "510aec15ba787fabe63422c7e23b2247e4993ca182f910052500d074b2a43a01",
+      "library_versions": {
+        "joblib": "1.5.3",
+        "numpy": "2.4.6",
+        "python": "3.11.3",
+        "scikit_learn": "1.9.0"
+      },
+      "model_version": "fare_distribution_v1",
+      "trusted_sources_only": true
+    },
+    "configuration": {
+      "agent_record_count": 500,
+      "bootstrap_samples": 1000,
+      "bootstrap_seed": 202815,
+      "customer_pool_size": 5000,
+      "dataset_seed": 202613,
+      "dynamic_record_count": 5000,
+      "dynamic_seed": 202714,
+      "primary_risk_profile": "balanced",
+      "transaction_count": 20000
+    },
+    "dataset": "Synthetic India Mobility",
+    "dataset_fingerprint_sha256": "4189c9ceb1ca07b92b4b741a07f76ab5062e694dcbe67cd435954d2de1d2725e",
+    "evaluation_dataset_used_for_training": false,
+    "filesystem_paths_in_fingerprint": false,
+    "personalized_model": {
+      "dataset_fingerprint_sha256": "9ead8e00a1c48e5c692df08afc3f4d403148aee0918e571af12f41ac8aa40847",
+      "library_versions": {
+        "joblib": "1.5.3",
+        "numpy": "2.4.6",
+        "python": "3.11.3",
+        "scikit_learn": "1.9.0"
+      },
+      "model_version": "fare_distribution_personalized_v1",
+      "trusted_sources_only": true
+    },
+    "policy": "balanced",
+    "predictor": "fare_distribution_personalized_v1",
+    "production_data_used": false,
+    "project_version": "0.14.0",
+    "record_count": 20000,
+    "retraining_performed": false,
+    "seed": 202613,
+    "synthetic_data_disclaimer": "These results use synthetic city profiles and are not production city statistics.",
+    "synthetic_data_only": true,
+    "target_collection_probability": "0.970000"
+  },
+  "strategies": {
+    "exact_estimate": {
+      "average_block_amount_paise": 27681,
+      "average_excess_block_paise": 428,
+      "average_excess_block_ratio": "0.014806",
+      "average_under_block_paise": 1185,
+      "capital_efficiency": "0.984527",
+      "collection_success_count": 6919,
+      "collection_success_rate": "0.345950",
+      "strategy": "exact_estimate",
+      "total_actual_amount_paise": 568760018,
+      "total_blocked_amount_paise": 553628604,
+      "transaction_count": 20000,
+      "under_block_count": 13081,
+      "under_block_rate": "0.654050"
+    },
+    "fixed_buffer_20": {
+      "average_block_amount_paise": 33217,
+      "average_excess_block_paise": 4792,
+      "average_excess_block_ratio": "0.144099",
+      "average_under_block_paise": 12,
+      "capital_efficiency": "0.855735",
+      "collection_success_count": 19795,
+      "collection_success_rate": "0.989750",
+      "strategy": "fixed_buffer_20",
+      "total_actual_amount_paise": 568760018,
+      "total_blocked_amount_paise": 664355107,
+      "transaction_count": 20000,
+      "under_block_count": 205,
+      "under_block_rate": "0.010250"
+    },
+    "optimized_balanced": {
+      "average_block_amount_paise": 31399,
+      "average_excess_block_paise": 3035,
+      "average_excess_block_ratio": "0.093269",
+      "average_under_block_paise": 73,
+      "capital_efficiency": "0.903340",
+      "collection_success_count": 18508,
+      "collection_success_rate": "0.925400",
+      "strategy": "optimized_balanced",
+      "total_actual_amount_paise": 568760018,
+      "total_blocked_amount_paise": 627998173,
+      "transaction_count": 20000,
+      "under_block_count": 1492,
+      "under_block_rate": "0.074600"
+    }
+  },
+  "strategy_comparison": {
+    "confidence_intervals_95": {
+      "exact_estimate": {
+        "average_excess_block_paise": {
+          "confidence_level": "0.950000",
+          "lower": "415.405600",
+          "method": "seeded_percentile_bootstrap",
+          "point_estimate": "428.301300",
+          "samples": 1000,
+          "seed": 202815,
+          "upper": "441.579650"
+        },
+        "collection_success_rate": {
+          "confidence_level": "0.950000",
+          "lower": "0.339388",
+          "method": "wilson_score",
+          "point_estimate": "0.345950",
+          "upper": "0.352571"
+        }
+      },
+      "fixed_buffer_20": {
+        "average_excess_block_paise": {
+          "confidence_level": "0.950000",
+          "lower": "4755.346200",
+          "method": "seeded_percentile_bootstrap",
+          "point_estimate": "4792.170450",
+          "samples": 1000,
+          "seed": 202816,
+          "upper": "4826.704600"
+        },
+        "collection_success_rate": {
+          "confidence_level": "0.950000",
+          "lower": "0.988257",
+          "method": "wilson_score",
+          "point_estimate": "0.989750",
+          "upper": "0.991055"
+        }
+      },
+      "optimized_balanced": {
+        "average_excess_block_paise": {
+          "confidence_level": "0.950000",
+          "lower": "3001.012950",
+          "method": "seeded_percentile_bootstrap",
+          "point_estimate": "3035.100350",
+          "samples": 1000,
+          "seed": 202817,
+          "upper": "3069.544600"
+        },
+        "collection_success_rate": {
+          "confidence_level": "0.950000",
+          "lower": "0.921676",
+          "method": "wilson_score",
+          "point_estimate": "0.925400",
+          "upper": "0.928960"
+        }
+      }
+    },
+    "deltas": {
+      "optimized_average_excess_reduction_paise_vs_fixed_20": 1757,
+      "optimized_collection_success_percentage_points_vs_exact": "57.945"
+    },
+    "metrics": {
+      "exact_estimate": {
+        "average_block_amount_paise": 27681,
+        "average_excess_block_paise": 428,
+        "average_excess_block_ratio": "0.014806",
+        "average_under_block_paise": 1185,
+        "capital_efficiency": "0.984527",
+        "collection_success_count": 6919,
+        "collection_success_rate": "0.345950",
+        "strategy": "exact_estimate",
+        "total_actual_amount_paise": 568760018,
+        "total_blocked_amount_paise": 553628604,
+        "transaction_count": 20000,
+        "under_block_count": 13081,
+        "under_block_rate": "0.654050"
+      },
+      "fixed_buffer_20": {
+        "average_block_amount_paise": 33217,
+        "average_excess_block_paise": 4792,
+        "average_excess_block_ratio": "0.144099",
+        "average_under_block_paise": 12,
+        "capital_efficiency": "0.855735",
+        "collection_success_count": 19795,
+        "collection_success_rate": "0.989750",
+        "strategy": "fixed_buffer_20",
+        "total_actual_amount_paise": 568760018,
+        "total_blocked_amount_paise": 664355107,
+        "transaction_count": 20000,
+        "under_block_count": 205,
+        "under_block_rate": "0.010250"
+      },
+      "optimized_balanced": {
+        "average_block_amount_paise": 31399,
+        "average_excess_block_paise": 3035,
+        "average_excess_block_ratio": "0.093269",
+        "average_under_block_paise": 73,
+        "capital_efficiency": "0.903340",
+        "collection_success_count": 18508,
+        "collection_success_rate": "0.925400",
+        "strategy": "optimized_balanced",
+        "total_actual_amount_paise": 568760018,
+        "total_blocked_amount_paise": 627998173,
+        "transaction_count": 20000,
+        "under_block_count": 1492,
+        "under_block_rate": "0.074600"
+      }
+    },
+    "scope": "same_fresh_transactions_and_outcomes"
+  },
+  "tradeoff_points": [
+    {
+      "average_excess_block_paise": 428,
+      "collection_success_rate": "0.345950",
+      "strategy": "exact_estimate"
+    },
+    {
+      "average_excess_block_paise": 4792,
+      "collection_success_rate": "0.989750",
+      "strategy": "fixed_buffer_20"
+    },
+    {
+      "average_excess_block_paise": 3035,
+      "collection_success_rate": "0.925400",
+      "strategy": "optimized_balanced"
+    }
+  ]
+}

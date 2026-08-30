@@ -25,7 +25,7 @@ export const optimizeResponse: OptimizeResponse = {
     objective_components: { under_block: '0.120000', excess: '0.043420' },
     candidate_comparison: [], history_summary: { eligible_rides: 8 }, explanation_id: 'exp-test-1',
   },
-  meta: { project_version: '0.12.0', processing_ms: 13.2, financial_logic_location: 'python_backend' },
+  meta: { project_version: '0.14.0', processing_ms: 13.2, financial_logic_location: 'python_backend' },
 }
 
 export const revisedResponse: OptimizeResponse = {
@@ -72,7 +72,7 @@ export const evidenceResponse: EvidenceResponse = {
   provenance: {
     dataset: 'Synthetic India Mobility', record_count: 10000, seed: 202611,
     predictor: 'fare_distribution_personalized_v1', policy: 'balanced',
-    target_collection_probability: '0.970000', project_version: '0.12.0',
+    target_collection_probability: '0.970000', project_version: '0.14.0',
     dataset_fingerprint_sha256: 'abcdef0123456789abcdef0123456789',
     synthetic_data_disclaimer: 'These results use synthetic city profiles and are not production city statistics.',
   },
@@ -98,6 +98,21 @@ export const evidenceResponse: EvidenceResponse = {
     static: metric('static', '0.920000', 5200), dynamic: metric('dynamic', '0.968000', 6900),
     dynamic_diagnostics: { average_initial_block_paise: 70100, average_final_authorized_block_paise: 74800, rides_requiring_additional_block_rate: '0.480000' },
   },
+  strategy_comparison: {
+    confidence_intervals_95: Object.fromEntries(
+      ['exact_estimate', 'fixed_buffer_20', 'optimized_balanced'].map(strategy => [strategy, {
+        collection_success_rate: { point_estimate: '0.971000', lower: '0.967000', upper: '0.974000', method: 'wilson_score' },
+        average_excess_block_paise: { point_estimate: '6200.000000', lower: '6100.000000', upper: '6300.000000', method: 'seeded_percentile_bootstrap', samples: 1000 },
+      }]),
+    ) as NonNullable<EvidenceResponse['strategy_comparison']>['confidence_intervals_95'],
+  },
+  prediction_calibration: {
+    quantiles: Object.fromEntries(['0.50', '0.90', '0.95', '0.97', '0.99'].map(quantile => [quantile, { target_coverage: quantile, observed_coverage: quantile, calibration_error: '0.000000', absolute_calibration_error: '0.000000', pinball_loss_paise: '100.000000' }])),
+    mean_pinball_loss_paise: '120.000000', median_mae_paise: '450.000000',
+    raw_quantile_crossing: { record_count: 0, record_frequency: '0.000000', adjacent_pair_count: 0 },
+    prediction_mode_counts: { base: 100, personalized: 9900 },
+  },
+  agent_consistency: { record_count: 500, successful_runs: 500, decision_mismatches: 0, average_tool_calls: 4 },
 }
 
 export const agentDecideResponse = {
@@ -183,4 +198,3 @@ export const agentDecideResponse = {
     financial_logic_location: 'python_backend',
   },
 }
-

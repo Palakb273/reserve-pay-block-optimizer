@@ -68,7 +68,7 @@ class DashboardSettings:
 
     @property
     def resolved_evidence(self) -> Path:
-        return self.evidence_path or self.repository_root / "demo/evidence/dashboard_evidence.json"
+        return self.evidence_path or self.repository_root / "demo/evidence/final_evidence.json"
 
 
 class DashboardService:
@@ -389,7 +389,7 @@ class DashboardService:
         except (OSError, json.JSONDecodeError) as exc:
             raise DashboardError(
                 "evidence_artifact_unavailable",
-                "Precomputed dashboard evidence is unavailable. Run prepare-dashboard-evidence.",
+                "Precomputed final evidence is unavailable. Run prepare-final-evidence.",
                 status_code=503,
             ) from exc
         required = {"provenance", "strategies", "block_distribution", "per_city", "personalization", "dynamic"}

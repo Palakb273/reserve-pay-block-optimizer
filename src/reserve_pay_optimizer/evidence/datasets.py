@@ -1,45 +1,51 @@
-"""Dataset generation utilities for Phase 13 final evidence.
-
-This module provides a deterministic transaction dataset generator used by the final
-evidence pipeline. It delegates to the existing transaction simulator while
-exposing additional helpers for metadata, fingerprinting, and JSON serialisation.
-"""
+"""Deterministic Phase-13 evaluation datasets and canonical fingerprints."""
 
 from __future__ import annotations
 
-import json
 import hashlib
+import json
 from pathlib import Path
-from typing import List, Dict
 
+from reserve_pay_optimizer.simulation.config import SimulationConfig
 from reserve_pay_optimizer.simulation.generator import simulate_transactions
+from reserve_pay_optimizer.simulation.models import SimulationDataset
 
 
-def generate_dataset(count: int = 10_000, seed: int = 202611) -> List[dict[str, object]]:
-    """Generate a deterministic list of transaction records.
+def generate_dataset(
+    *, count: int, seed: int, customer_pool_size: int
+) -> SimulationDataset:
+    """Generate one fresh, reproducible, customer-aware evaluation cohort."""
 
-    Args:
-        count: Number of transactions to simulate. Defaults to the Phase 11 demo
-            size of 10 000.
-        seed: Random seed for deterministic simulation. The same seed must be
-            used for reproducibility across runs and CI.
-
-    Returns:
-        A list of transaction dictionaries suitable for JSON dumping and
-        downstream evidence calculations.
-    """
-    transactions = simulate_transactions(count=count, seed=seed)
-    return [tx.to_dict() for tx in transactions]
+    return simulate_transactions(
+        SimulationConfig(
+            transaction_count=count,
+            seed=seed,
+            customer_pool_size=customer_pool_size,
+            customer_behavior_enabled=True,
+        )
+    )
 
 
-def write_dataset(path: Path, count: int = 10_000, seed: int = 202611) -> Path:
-    """Write the generated dataset to *path* as pretty‑printed JSON.
+def dataset_fingerprint(dataset: SimulationDataset) -> str:
+    """Hash canonical contents and simulator configuration without local paths."""
+
+    encoded = json.dumps(
+        dataset.to_dict(),
+        sort_keys=True,
+        separators=(",", ":"),
+        ensure_ascii=True,
+    ).encode("utf-8")
+    return hashlib.sha256(encoded).hexdigest()
+
+
+def write_dataset(dataset: SimulationDataset, path: Path) -> Path:
+    """Write a generated dataset only when an explicit export is wanted.
 
     The function creates parent directories as needed.
     """
     path.parent.mkdir(parents=True, exist_ok=True)
-    dataset = generate_dataset(count=count, seed=seed)
-    import json
-    with path.open("w", encoding="utf-8") as f:
-        json.dump(dataset, f, indent=2, ensure_ascii=False)
+    path.write_text(
+        json.dumps(dataset.to_dict(), indent=2, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
     return path
