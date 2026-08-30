@@ -1,6 +1,6 @@
 """Reserve Pay Block Optimizer package."""
 
-__version__ = "0.9.0"
+__version__ = "0.10.0"
 
 from reserve_pay_optimizer.domain.errors import DomainValidationError, ValidationIssue
 from reserve_pay_optimizer.domain.evaluation import (
@@ -59,6 +59,17 @@ from reserve_pay_optimizer.personalization.predictor import PersonalizedFarePred
 from reserve_pay_optimizer.prediction.config import MODEL_VERSION, ModelConfig
 from reserve_pay_optimizer.prediction.distribution import FareDistributionPrediction
 from reserve_pay_optimizer.prediction.model import ConditionalFareDistributionModel
+from reserve_pay_optimizer.reserve_pay import (
+    MockFailureConfig,
+    MockReserveProvider,
+    RazorpayProvider,
+    RazorpayProviderConfig,
+    ReserveBlock,
+    ReserveBlockStatus,
+    ReservePayProvider,
+    ReservePayService,
+    RetryConfig,
+)
 from reserve_pay_optimizer.services.mobility_validation import (
     validate_mobility_transaction,
 )
@@ -108,6 +119,15 @@ __all__ = [
     "ReserveRiskPolicy",
     "RenderedDecisionExplanation",
     "ReserveBlockOptimizer",
+    "ReserveBlock",
+    "ReserveBlockStatus",
+    "ReservePayProvider",
+    "ReservePayService",
+    "MockFailureConfig",
+    "MockReserveProvider",
+    "RazorpayProvider",
+    "RazorpayProviderConfig",
+    "RetryConfig",
     "RiskProfile",
     "RideContextUpdate",
     "RideUpdateReason",

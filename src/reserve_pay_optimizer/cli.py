@@ -3,7 +3,7 @@
 import argparse
 import json
 import sys
-from datetime import datetime
+from datetime import datetime, timedelta
 from decimal import Decimal, InvalidOperation
 from pathlib import Path
 from collections.abc import Mapping
@@ -53,6 +53,17 @@ from reserve_pay_optimizer.prediction.persistence import (
     save_predictor_artifact,
 )
 from reserve_pay_optimizer.prediction.training import train_predictor
+from reserve_pay_optimizer.reserve_pay.errors import ReservePayError
+from reserve_pay_optimizer.reserve_pay.mock_provider import (
+    MockFailureConfig,
+    MockReserveProvider,
+)
+from reserve_pay_optimizer.reserve_pay.models import GetBlockStatusRequest
+from reserve_pay_optimizer.reserve_pay.razorpay_provider import (
+    RazorpayProvider,
+    RazorpayProviderConfig,
+)
+from reserve_pay_optimizer.reserve_pay.service import ReservePayService, RetryConfig
 from reserve_pay_optimizer.services.comparison import compare_strategies
 from reserve_pay_optimizer.services.evaluation_input import parse_evaluation_dataset
 from reserve_pay_optimizer.services.mobility_validation import (
@@ -322,6 +333,39 @@ def _parser() -> argparse.ArgumentParser:
         default=ExplanationLevel.CONCISE.value,
     )
     _add_optimization_arguments(explain_block)
+    reserve_pay_demo = subparsers.add_parser(
+        "reserve-pay-demo",
+        help="run the complete Phase-10 Reserve Pay lifecycle",
+    )
+    reserve_pay_demo.add_argument(
+        "--provider", choices=("mock", "razorpay"), default="mock"
+    )
+    reserve_pay_demo.add_argument("--model", type=Path, required=True)
+    reserve_pay_demo.add_argument("--base-model", type=Path, required=True)
+    reserve_pay_demo.add_argument("--scenario", type=Path, required=True)
+    reserve_pay_demo.add_argument(
+        "--risk-profile",
+        choices=[profile.value for profile in RiskProfile],
+        default=RiskProfile.BALANCED.value,
+    )
+    reserve_pay_demo.add_argument(
+        "--fail-first-increase",
+        action="store_true",
+        help="make the first mock increase fail permanently",
+    )
+    reserve_pay_demo.add_argument(
+        "--retry-first-increase",
+        action="store_true",
+        help="make the first mock increase transiently fail, then succeed on retry",
+    )
+    reserve_pay_demo.add_argument("--explain", action="store_true")
+    reserve_pay_demo.add_argument("--verbose", action="store_true")
+    reserve_pay_demo.add_argument(
+        "--detail",
+        choices=[level.value for level in ExplanationLevel],
+        default=ExplanationLevel.CONCISE.value,
+    )
+    _add_optimization_arguments(reserve_pay_demo)
     return parser
 
 
@@ -343,7 +387,136 @@ def _error_response(error: DomainValidationError) -> dict[str, object]:
 def main(argv: Sequence[str] | None = None) -> int:
     args = _parser().parse_args(argv)
     try:
-        if args.command == "simulate-dynamic-mobility":
+        if args.command == "reserve-pay-demo":
+            with args.scenario.open("r", encoding="utf-8") as stream:
+                scenario_payload = _load_payload(stream)
+            record, history_contexts, history_outcomes = parse_dynamic_scenario(
+                scenario_payload  # type: ignore[arg-type]
+            )
+            personalized_artifact = load_personalized_artifact(args.model)
+            base_artifact = load_predictor_artifact(args.base_model)
+            predictor = PersonalizedFarePredictor(
+                base_artifact.model,
+                personalized_artifact.model,
+                InMemoryCustomerHistoryProvider(history_contexts, history_outcomes),
+            )
+            dynamic_service = DynamicRideService(
+                predictor, ReserveBlockOptimizer(_optimization_config(args))
+            )
+            policy = ReserveRiskPolicy.for_profile(RiskProfile(args.risk_profile))
+            session = dynamic_service.start_dynamic_session(
+                record.initial_transaction, policy
+            )
+            if args.provider == "mock":
+                failure_config = MockFailureConfig(
+                    fail_next_increase=args.fail_first_increase,
+                    transient_failures={
+                        "increase": 1 if args.retry_first_increase else 0
+                    },
+                )
+                provider = MockReserveProvider(failure_config)
+            else:
+                provider = RazorpayProvider(RazorpayProviderConfig.from_environment())
+            audit_tick = 0
+
+            def demo_audit_clock() -> datetime:
+                nonlocal audit_tick
+                value = record.initial_transaction.timestamp + timedelta(
+                    seconds=audit_tick
+                )
+                audit_tick += 1
+                return value
+
+            reserve_service = ReservePayService(
+                provider,
+                dynamic_service=dynamic_service,
+                retry_config=RetryConfig(max_attempts=3, delay_seconds=0),
+                sleeper=lambda _: None,
+                clock=demo_audit_clock,
+            )
+            initial_execution = reserve_service.authorize_initial_block(
+                session.initial_optimization.reserve_decision,
+                customer_reference=session.initial_context.customer_id,
+                idempotency_key=f"{session.transaction_id}:initial",
+                metadata=(("domain", MOBILITY_DOMAIN.value),),
+            )
+            if (
+                initial_execution.block.authorized_amount
+                != session.current_authorized_block
+            ):
+                raise RuntimeError(
+                    "provider initial authorization does not match the computed decision"
+                )
+            explanation_service = ExplanationService() if args.explain else None
+            initial_output: dict[str, object] = {
+                "recommendation": session.initial_optimization.to_dict(
+                    include_candidates=False
+                ),
+                "execution": initial_execution.to_dict(),
+            }
+            if explanation_service is not None:
+                initial_output["explanation"] = explanation_service.explain_reserve_decision(
+                    session.initial_context,
+                    session.initial_prediction,
+                    session.initial_optimization,
+                    ExplanationLevel(args.detail),
+                ).to_dict()
+            update_outputs: list[dict[str, object]] = []
+            for update in record.updates:
+                application = dynamic_service.apply_context_update(session, update)
+                session = application.session
+                execution = reserve_service.request_additional_block(
+                    session,
+                    application.decision,
+                    block_id=initial_execution.block.block_id,
+                    idempotency_key=f"{session.transaction_id}:{update.event_id}:increase",
+                )
+                session = execution.session
+                update_output: dict[str, object] = {
+                    "decision": application.decision.to_dict(verbose=args.verbose),
+                    "execution": execution.to_dict(),
+                }
+                if explanation_service is not None:
+                    update_output["explanation"] = explanation_service.explain_dynamic_decision(
+                        session,
+                        application.decision,
+                        ExplanationLevel(args.detail),
+                    ).to_dict()
+                update_outputs.append(update_output)
+            settlement = reserve_service.settle_completed_transaction(
+                record.outcome,
+                block_id=initial_execution.block.block_id,
+                idempotency_key=f"{session.transaction_id}:settlement",
+            )
+            result = {
+                "reserve_pay_demo_status": "complete",
+                "provider": provider.name.value,
+                "transaction_id": session.transaction_id,
+                "risk_profile": policy.profile.value,
+                "initial": initial_output,
+                "updates": update_outputs,
+                "completion": settlement.to_dict(),
+                "final_block_status": reserve_service.get_block_status(
+                    GetBlockStatusRequest(
+                        initial_execution.block.block_id, session.transaction_id
+                    )
+                ).to_dict(),
+                "provider_attempts": (
+                    [
+                        {"operation": operation, "idempotency_key": key}
+                        for operation, key in provider.operation_attempts
+                    ]
+                    if isinstance(provider, MockReserveProvider) and args.verbose
+                    else None
+                ),
+                "audit_events": (
+                    [event.to_dict() for event in reserve_service.audit_events]
+                    if args.verbose
+                    else None
+                ),
+                "actual_amount_decision_time_use": False,
+            }
+        elif args.command == "simulate-dynamic-mobility":
             config = SimulationConfig(
                 transaction_count=args.count,
                 seed=args.seed,
@@ -798,6 +971,15 @@ def main(argv: Sequence[str] | None = None) -> int:
         return 2
     except PolicyTargetNotReachable as exc:
         print(json.dumps(exc.to_dict(), indent=2, sort_keys=True))
+        return 2
+    except ReservePayError as exc:
+        print(
+            json.dumps(
+                {"status": "error", "error_type": "reserve_pay_error", **exc.to_dict()},
+                indent=2,
+                sort_keys=True,
+            )
+        )
         return 2
     except (OSError, ValueError, RuntimeError, KeyError) as exc:
         print(json.dumps({"status": "error", "message": str(exc)}, indent=2, sort_keys=True))

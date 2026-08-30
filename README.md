@@ -1,6 +1,6 @@
 # Reserve Pay Block Optimizer
 
-This Python 3.11+ project defines, simulates, predicts, optimizes, dynamically revises, and explains reserve blocks for India-first mobility payments. Phase 4 predicts conditional fare uncertainty, Phase 5 makes a transparent financial blocking decision, Phase 6 applies merchant risk policies, Phase 7 personalizes from eligible completed customer history, Phase 8 re-optimizes from legitimate observable in-ride changes, and Phase 9 produces auditable explanations without changing any decision.
+This Python 3.11+ project defines, simulates, predicts, optimizes, dynamically revises, explains, and executes reserve blocks for India-first mobility payments. Phase 4 predicts conditional fare uncertainty, Phase 5 makes a transparent financial blocking decision, Phase 6 applies merchant risk policies, Phase 7 personalizes from eligible completed customer history, Phase 8 re-optimizes from legitimate observable in-ride changes, Phase 9 produces auditable explanations, and Phase 10 executes already-computed decisions through a provider-neutral Reserve Pay boundary.
 
 ## Problem
 
@@ -914,28 +914,157 @@ python -m reserve_pay_optimizer run-dynamic-ride `
 
 Without `--auto-confirm`, dynamic text says the additional amount is only recommended. With it, text says confirmation occurred only in simulated/application state and that no payment provider was called.
 
+## Phase 10 — Razorpay Reserve Pay Architecture
+
+```text
+Prediction decides the expected distribution.
+Optimization chooses the reserve amount.
+Policy constrains acceptable risk.
+Reserve Pay executes the already-made decision.
+```
+
+The `reserve_pay` package contains no prediction, optimization, policy, personalization, or explanation logic. `ReservePayService` receives an exact `Money` amount from an existing `ReserveDecision` or `DynamicReoptimizationDecision` and invokes a `ReservePayProvider`. A provider response can confirm or fail execution, but it cannot change the predicted distribution or calculate a new target.
+
+### Provider contract
+
+Every provider implements normalized operations equivalent to:
+
+```text
+createBlock(request)       -> initial authorization
+increaseBlock(request)     -> provider-neutral additional authorization intent
+debitBlock(request)        -> full or partial collection
+releaseBlock(request)      -> release the full unused remainder
+getBlockStatus(request)    -> normalized application state
+```
+
+The public source requirement lists create, debit, release, and status. `increaseBlock` is the explicit provider-neutral bridge required by Phase 8's additional-block recommendation. It deliberately does not assume whether a future Razorpay mapping amends one authorization or creates a linked authorization.
+
+`ReserveBlock` stores exact integer-paise `Money` for authorized, remaining, debited, and released funds. It enforces:
+
+```text
+authorized > 0
+debited >= 0
+released >= 0
+remaining >= 0
+debited + released + remaining = authorized
+```
+
+The lifecycle is explicit:
+
+```text
+PENDING -> AUTHORIZED -> PARTIALLY_DEBITED -> DEBITED
+                   |               |
+                   +-------------> RELEASED
+PENDING -> FAILED
+```
+
+Arbitrary transitions are rejected. Phase 10 intentionally supports only releasing the full remaining authorization. This keeps partial debit plus release accounting unambiguous across providers; partial release can be added only when a verified provider contract and a corresponding active-partially-released state are defined.
+
+### Idempotency, retries, and failures
+
+Create, increase, debit, and release require an idempotency key. The in-memory Phase-10 registry is scoped by operation and key. Identical payload replay returns the original result without executing twice; reuse with a changed payload raises `IdempotencyConflictError`. A production persistent registry can replace this store without changing the provider contract.
+
+`RetryConfig` defaults to three attempts and zero delay. Only typed timeout and transient-unavailable failures are retryable. Validation, rejection, insufficient authorization, invalid state, unsupported operation, configuration, and idempotency conflicts are not retried. Every attempt reuses the exact same request and idempotency key. Tests inject a sleeper, so they never wait in real time.
+
+Provider failures are normalized as credential-safe `ReservePayError` subclasses. Audit events record operation type, transaction/block identity, provider, a short SHA-256 fingerprint of the idempotency key, and a safe error code. They never contain provider credentials, authentication headers, raw provider payloads, or secret values.
+
+### MockReserveProvider
+
+`MockReserveProvider` implements the complete offline lifecycle with an in-memory block store, deterministic timestamps, and inspectable IDs such as `mock_blk_000001`. It supports initial create, increases, normalized status, partial and full debit, full-remaining release, idempotent replay, conflicts, and state validation.
+
+Normal mock operation never fails randomly. `MockFailureConfig` can deterministically reject the next create/increase/debit/release, time out the next named operation, or produce a configured number of transient failures. This supports reliable success, failure, and retry demos.
+
+### Dynamic authorization and reconciliation
+
+Phase 8's explicit `confirm_block_authorized(...)` remains the only way to mutate a dynamic session's authorized amount:
+
+```text
+dynamic recommendation
+        -> provider increase attempt
+        -> normalized success
+        -> Phase-8 version/stale checks
+        -> confirmation
+```
+
+A provider failure returns the higher recommended target and failed execution evidence while preserving the prior authorized amount. Payment failure does not recalculate the target. If a provider success arrives after a newer ride update makes the decision stale, the success is retained in `DynamicBlockExecution`, the current session is not mutated, and the status becomes `reconciliation_required` for later operational handling.
+
+Execution status is structured factual evidence. An explanation may display that status, but neither deterministic nor generated text can set or change provider state.
+
+### Completion and settlement
+
+`settle_completed_transaction(...)` is the only Phase-10 path that accepts `RideTransactionOutcome`. After the ride finishes it fetches the normalized block, debits the exact actual fare, and releases the full remainder. It never calls the predictor or optimizer. If the actual fare exceeds the remaining authorization, it performs no speculative extra collection and returns an explicit shortfall with `insufficient_reserved_funds` status.
+
+### RazorpayProvider status
+
+The official [UPI Reserve Pay product page](https://razorpay.com/docs/payments/recurring-payments/upi-reserve-pay/?preferred-country=IN) was checked on 2026-08-30. It verifies the Single Block Multi Debit product concept, customer authorization, subsequent debit flow, transport/mobility use case, and account-activation requirement. The retrievable public material did not provide a complete, unambiguous Reserve Pay endpoint, HTTP method, authentication construction specific to these operations, create/increase/debit/release request and response schemas, status mapping, idempotency contract, webhook schema, or error taxonomy.
+
+> The Razorpay provider boundary is implemented, but concrete network mappings are intentionally not fabricated without verified Reserve Pay API documentation.
+
+`RazorpayProvider` therefore implements the same Python contract, validates `RAZORPAY_KEY_ID` and `RAZORPAY_KEY_SECRET` from environment configuration, exposes an injectable transport boundary, advertises unsupported capabilities, and raises `UnsupportedProviderOperation` for network operations. It never silently falls back to mock. Credentials are excluded from representations, serialized models, audit events, CLI output, and exceptions. To enable real execution, approved documentation must define and version all mappings listed above, followed by offline fake-transport contract tests and a controlled sandbox verification.
+
+### Full offline demo
+
+```powershell
+python -m reserve_pay_optimizer reserve-pay-demo `
+  --provider mock `
+  --model artifacts/prediction/fare_distribution_personalized_v1 `
+  --base-model artifacts/prediction/fare_distribution_v1 `
+  --scenario examples/dynamic_reoptimization.json `
+  --risk-profile balanced `
+  --explain `
+  --verbose
+```
+
+The checked-in scenario calculates the initial recommendation, authorizes it with the mock provider, applies both in-ride updates, executes each additional authorization, settles the completed fare, releases unused funds, and returns the final normalized block.
+
+Demonstrate a failed first additional authorization; the first event's authorized amount remains unchanged:
+
+```powershell
+python -m reserve_pay_optimizer reserve-pay-demo `
+  --provider mock `
+  --model artifacts/prediction/fare_distribution_personalized_v1 `
+  --base-model artifacts/prediction/fare_distribution_v1 `
+  --scenario examples/dynamic_reoptimization.json `
+  --fail-first-increase `
+  --verbose
+```
+
+Demonstrate one transient failure followed by a safe retry with the same idempotency key:
+
+```powershell
+python -m reserve_pay_optimizer reserve-pay-demo `
+  --provider mock `
+  --model artifacts/prediction/fare_distribution_personalized_v1 `
+  --base-model artifacts/prediction/fare_distribution_v1 `
+  --scenario examples/dynamic_reoptimization.json `
+  --retry-first-increase `
+  --verbose
+```
+
+Selecting `--provider razorpay` never falls back. Missing environment configuration returns `provider_configuration_error`; configured but undocumented execution returns `unsupported_provider_operation`.
+
 ## Tests
 
 ```powershell
 python -m unittest discover -s tests -v
 ```
 
-The suite covers every Phase 1–8 invariant plus static, personalized, cold-start, and dynamic evidence; financial fact consistency; Balanced-minimum/Q99-selection wording; candidate and objective evidence; privacy; no outcome leakage; deterministic text and fingerprints; provider-neutral prompt inputs; valid fake-generated output; invalid-response and exception fallback; explanation metrics; and Phase 9 CLI workflows.
+The suite covers every Phase 1–9 invariant plus provider contracts; exact reserve accounting; state transitions; deterministic mock execution and IDs; create/increase/debit/release idempotency; conflict rejection; partial/full debit; over-debit and invalid release; normalized status; transient/permanent retry behavior; retry key reuse; credential redaction; dynamic success/failure/stale reconciliation; post-ride settlement and shortfall; outcome leakage protection; full mock lifecycle; and Phase-10 CLI workflows.
 
 ## Explicitly not implemented
 
-Phase 9 adds deterministic structured explanation and an optional provider-neutral text-generation boundary only. It does not contain:
+Phase 10 adds provider-neutral execution architecture and a complete deterministic mock lifecycle. It does not contain:
 
 - production data or claims that synthetic city profiles are measured statistics;
 - TensorFlow, PyTorch, XGBoost, LightGBM, or an LLM SDK;
 - merchant personalization;
 - a vendor LLM SDK, live generated-text provider, tool-calling agent, or agent framework;
-- Razorpay API calls;
-- `createBlock`, `debitBlock`, `releaseBlock`, or payment authorization/retry handling;
+- fabricated or unverified Razorpay network calls;
+- a production database, distributed idempotency store, webhook consumer, or reconciliation worker;
 - mid-ride release recommendations;
 - a frontend or dashboard;
 - production backtesting data.
 
-## What remains for Phase 10
+## What remains for Phase 11
 
-Phase 10 may add the Razorpay Reserve Pay adapter and real authorization-state integration. `createBlock`, `debitBlock`, `releaseBlock`, status lookup, credentials, retries, payment-provider failures, release flows, agents, and UI remain unimplemented. Any future phase must preserve the current decision/explanation boundary, event-time leakage protections, and estimated-probability terminology.
+Phase 11 may add the dashboard, charts, what-if controls, evidence views, and operator-facing lifecycle visualization. It must consume the normalized Reserve Pay state rather than provider-specific payloads. Real Razorpay execution remains gated on approved API documentation and sandbox verification. Agents, customer/merchant behavior changes, ML retraining, policy changes, and unverified provider mappings remain outside Phase 10.
