@@ -1,6 +1,6 @@
 """Reserve Pay Block Optimizer package."""
 
-__version__ = "0.10.0"
+__version__ = "0.11.0"
 
 from reserve_pay_optimizer.domain.errors import DomainValidationError, ValidationIssue
 from reserve_pay_optimizer.domain.evaluation import (

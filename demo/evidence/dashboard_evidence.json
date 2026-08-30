@@ -1,0 +1,257 @@
+{
+  "block_distribution": [
+    {
+      "count": 623,
+      "lower_paise": 11491,
+      "upper_paise": 18715
+    },
+    {
+      "count": 2594,
+      "lower_paise": 18716,
+      "upper_paise": 25940
+    },
+    {
+      "count": 2860,
+      "lower_paise": 25941,
+      "upper_paise": 33165
+    },
+    {
+      "count": 2058,
+      "lower_paise": 33166,
+      "upper_paise": 40390
+    },
+    {
+      "count": 1045,
+      "lower_paise": 40391,
+      "upper_paise": 47615
+    },
+    {
+      "count": 453,
+      "lower_paise": 47616,
+      "upper_paise": 54840
+    },
+    {
+      "count": 187,
+      "lower_paise": 54841,
+      "upper_paise": 62065
+    },
+    {
+      "count": 92,
+      "lower_paise": 62066,
+      "upper_paise": 69290
+    },
+    {
+      "count": 47,
+      "lower_paise": 69291,
+      "upper_paise": 76515
+    },
+    {
+      "count": 16,
+      "lower_paise": 76516,
+      "upper_paise": 83740
+    },
+    {
+      "count": 13,
+      "lower_paise": 83741,
+      "upper_paise": 90965
+    },
+    {
+      "count": 6,
+      "lower_paise": 90966,
+      "upper_paise": 98190
+    },
+    {
+      "count": 3,
+      "lower_paise": 98191,
+      "upper_paise": 105415
+    },
+    {
+      "count": 3,
+      "lower_paise": 105416,
+      "upper_paise": 112640
+    }
+  ],
+  "deltas": {
+    "average_excess_reduction_paise_vs_fixed_20": 1222,
+    "collection_success_percentage_points_vs_exact": "62.160"
+  },
+  "dynamic": {
+    "authorization_assumption": "Dynamic evaluation assumes recommended additional block requests succeed. No real Razorpay authorization is performed.",
+    "dynamic": {
+      "average_excess_block_paise": 3736,
+      "average_excess_block_ratio": "0.113167",
+      "average_under_block_paise": 9,
+      "capital_efficiency": "0.883901",
+      "collection_success_count": 491,
+      "collection_success_rate": "0.982000",
+      "strategy": "dynamic_personalized_reoptimization",
+      "total_actual_amount_paise": 14225555,
+      "total_blocked_amount_paise": 16088973,
+      "transaction_count": 500,
+      "under_block_count": 9,
+      "under_block_rate": "0.018000"
+    },
+    "dynamic_diagnostics": {
+      "average_additional_when_triggered_paise": 934,
+      "average_block_increase_count": "0.806000",
+      "average_final_authorized_block_paise": 32178,
+      "average_initial_block_paise": 31668,
+      "average_reoptimization_count": "1.494000",
+      "average_total_additional_block_paise": 510,
+      "current_block_remained_sufficient_rate": "0.460509",
+      "maximum_additional_amount_paise": 5434,
+      "median_additional_amount_paise": 326,
+      "rides_requiring_additional_block_rate": "0.546000",
+      "update_triggered_increase_rate": "0.539491"
+    },
+    "evaluation_scope": "same_rides_static_vs_dynamic",
+    "evaluation_status": "complete",
+    "record_count": 500,
+    "risk_profile": "balanced",
+    "static": {
+      "average_excess_block_paise": 3282,
+      "average_excess_block_ratio": "0.100008",
+      "average_under_block_paise": 65,
+      "capital_efficiency": "0.896367",
+      "collection_success_count": 467,
+      "collection_success_rate": "0.934000",
+      "strategy": "static_personalized_dynamic_comparison",
+      "total_actual_amount_paise": 14225555,
+      "total_blocked_amount_paise": 15833880,
+      "transaction_count": 500,
+      "under_block_count": 33,
+      "under_block_rate": "0.066000"
+    },
+    "target_collection_probability": "0.970000"
+  },
+  "per_city": {
+    "bengaluru": {
+      "optimized_average_excess_block_paise": 5036,
+      "optimized_collection_success_rate": "0.949660",
+      "record_count": 1470
+    },
+    "chennai": {
+      "optimized_average_excess_block_paise": 3467,
+      "optimized_collection_success_rate": "0.968122",
+      "record_count": 1443
+    },
+    "delhi": {
+      "optimized_average_excess_block_paise": 3419,
+      "optimized_collection_success_rate": "0.957746",
+      "record_count": 1420
+    },
+    "hyderabad": {
+      "optimized_average_excess_block_paise": 3511,
+      "optimized_collection_success_rate": "0.969919",
+      "record_count": 1363
+    },
+    "kolkata": {
+      "optimized_average_excess_block_paise": 3056,
+      "optimized_collection_success_rate": "0.958211",
+      "record_count": 1364
+    },
+    "mumbai": {
+      "optimized_average_excess_block_paise": 3592,
+      "optimized_collection_success_rate": "0.967213",
+      "record_count": 1464
+    },
+    "pune": {
+      "optimized_average_excess_block_paise": 2961,
+      "optimized_collection_success_rate": "0.963415",
+      "record_count": 1476
+    }
+  },
+  "personalization": {
+    "overrun_prone": {
+      "history_count": 8,
+      "prediction_mode": "personalized",
+      "q97_paise": 78434,
+      "recommended_block_paise": 80207
+    },
+    "stable_history": {
+      "history_count": 8,
+      "prediction_mode": "personalized",
+      "q97_paise": 73133,
+      "recommended_block_paise": 74903
+    }
+  },
+  "provenance": {
+    "base_predictor": "fare_distribution_v1",
+    "customer_behavior_enabled": true,
+    "customer_pool_size": 1000,
+    "dataset": "Synthetic India Mobility",
+    "dataset_fingerprint_sha256": "258733e957ddc7e82fc43fbcf4003ec4922d6a7a4c800597d8a9cccf556144cf",
+    "generated_at": "2026-08-30T10:45:19.087272+00:00",
+    "policy": "balanced",
+    "predictor": "fare_distribution_personalized_v1",
+    "project_version": "0.11.0",
+    "record_count": 10000,
+    "seed": 202611,
+    "synthetic_data_disclaimer": "These results use synthetic city profiles and are not production city statistics.",
+    "target_collection_probability": "0.970000"
+  },
+  "strategies": {
+    "exact_estimate": {
+      "average_block_amount_paise": 27782,
+      "average_excess_block_paise": 436,
+      "average_excess_block_ratio": "0.015118",
+      "average_under_block_paise": 1197,
+      "capital_efficiency": "0.984314",
+      "collection_success_count": 3404,
+      "collection_success_rate": "0.340400",
+      "strategy": "exact_estimate",
+      "total_actual_amount_paise": 285433731,
+      "total_blocked_amount_paise": 277822520,
+      "transaction_count": 10000,
+      "under_block_count": 6596,
+      "under_block_rate": "0.659600"
+    },
+    "fixed_buffer_20": {
+      "average_block_amount_paise": 33338,
+      "average_excess_block_paise": 4806,
+      "average_excess_block_ratio": "0.144456",
+      "average_under_block_paise": 11,
+      "capital_efficiency": "0.855841",
+      "collection_success_count": 9913,
+      "collection_success_rate": "0.991300",
+      "strategy": "fixed_buffer_20",
+      "total_actual_amount_paise": 285433731,
+      "total_blocked_amount_paise": 333387417,
+      "transaction_count": 10000,
+      "under_block_count": 87,
+      "under_block_rate": "0.008700"
+    },
+    "optimized_balanced": {
+      "average_block_amount_paise": 32092,
+      "average_excess_block_paise": 3584,
+      "average_excess_block_ratio": "0.108926",
+      "average_under_block_paise": 35,
+      "capital_efficiency": "0.888313",
+      "collection_success_count": 9620,
+      "collection_success_rate": "0.962000",
+      "strategy": "optimized_balanced",
+      "total_actual_amount_paise": 285433731,
+      "total_blocked_amount_paise": 320927195,
+      "transaction_count": 10000,
+      "under_block_count": 380,
+      "under_block_rate": "0.038000"
+    }
+  },
+  "tradeoff_points": [
+    {
+      "average_excess_block_paise": 436,
+      "collection_success_rate": "0.340400",
+      "strategy": "exact_estimate"
+    },
+    {
+      "average_excess_block_paise": 4806,
+      "collection_success_rate": "0.991300",
+      "strategy": "fixed_buffer_20"
+    },
+    {
+      "average_excess_block_paise": 3584,
+      "collection_success_rate": "0.962000",
+      "strategy": "optimized_balanced"
+    }
+  ]
+}

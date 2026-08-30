@@ -1,6 +1,6 @@
 # Reserve Pay Block Optimizer
 
-This Python 3.11+ project defines, simulates, predicts, optimizes, dynamically revises, explains, and executes reserve blocks for India-first mobility payments. Phase 4 predicts conditional fare uncertainty, Phase 5 makes a transparent financial blocking decision, Phase 6 applies merchant risk policies, Phase 7 personalizes from eligible completed customer history, Phase 8 re-optimizes from legitimate observable in-ride changes, Phase 9 produces auditable explanations, and Phase 10 executes already-computed decisions through a provider-neutral Reserve Pay boundary.
+This Python 3.11+ and React/TypeScript project defines, simulates, predicts, optimizes, dynamically revises, explains, executes, and demonstrates reserve blocks for India-first mobility payments. Phase 11 adds a polished three-screen decision dashboard over the unchanged Python financial engine.
 
 ## Problem
 
@@ -1043,17 +1043,91 @@ python -m reserve_pay_optimizer reserve-pay-demo `
 
 Selecting `--provider razorpay` never falls back. Missing environment configuration returns `provider_configuration_error`; configured but undocumented execution returns `unsupported_provider_operation`.
 
+## Phase 11 — Dashboard / Interactive Demo
+
+Phase 11 is a visualization and operator-demo layer. It does not reimplement financial logic in the browser:
+
+```text
+React / TypeScript dashboard
+        -> thin FastAPI JSON adapter
+        -> existing Python prediction, personalization, policy,
+           optimization, dynamic, explanation, and mock execution services
+```
+
+Money crosses the API as integer paise and probabilities cross as decimal strings. The FastAPI lifespan loads the trusted base and personalized model artifacts once; individual requests reuse those in-memory models. Invalid input and unavailable artifacts return structured, credential-safe errors.
+
+The interface has exactly three primary screens:
+
+1. **Optimizer** — edits legitimate pre-ride context, customer-history demonstration profile, and merchant risk profile; displays the recommended block, modeled collection coverage, Q05–Q99 uncertainty, expected unused reserve, and deterministic explanation. Mock authorization is an explicit separate action.
+2. **What-if Simulator** — debounces distance, projected traffic/duration, surge, risk, and customer-profile changes; asks the backend to recompute both decisions; shows previous versus revised reserve and a dynamic ride timeline. The failure demo visibly preserves the previously authorized amount when an additional authorization fails.
+3. **Evidence** — reads one precomputed artifact generated from a fresh deterministic 10,000-ride simulator dataset and compares Exact Estimate, Fixed 20%, and Optimized Balanced on the same outcomes. It includes provenance, per-city diagnostics, personalization proof, dynamic evidence, block distribution, and excess-versus-success trade-off charts.
+
+Traffic is not a new model feature. The dashboard adapter deterministically maps the selected traffic band to projected duration, which is already a legal decision-time feature. Actual fare remains excluded until the post-ride settlement path.
+
+### Reproducible evidence
+
+The checked-in `demo/evidence/dashboard_evidence.json` was generated, not hand-authored:
+
+```powershell
+python -m reserve_pay_optimizer prepare-dashboard-evidence `
+  --count 10000 `
+  --seed 202611 `
+  --output demo/evidence/dashboard_evidence.json
+```
+
+It records the dataset count, seed, customer pool, predictor/model versions, Balanced policy target, project version, generation time, and canonical SHA-256 dataset fingerprint. All evidence is synthetic and is not production Razorpay, merchant, Uber, Ola, or measured city data. The observed test metrics are displayed honestly and need not equal the 97% modeled policy target exactly.
+
+### Local startup
+
+Use two terminals from the repository root. First install/update the Python environment and start the API:
+
+```powershell
+python -m pip install -e .
+python -m reserve_pay_optimizer serve-dashboard --host 127.0.0.1 --port 8000
+```
+
+Then install and start the dashboard:
+
+```powershell
+cd frontend
+pnpm install
+pnpm dev
+```
+
+Open `http://127.0.0.1:5173/optimizer`. Vite proxies `/api` to the local FastAPI service. No credentials or external payment network are required; execution demonstrations use `MockReserveProvider` only.
+
+### Five-minute demo walkthrough
+
+1. Open **Optimizer** and point out ₹650.00 estimated fare, Hyderabad context, Stable History, and Balanced / 97% policy. Calculate and show the exact recommended block, Q05–Q99 rail, personalized mode, and deterministic reason.
+2. Switch customer profile to **Overrun-Prone History** and recalculate. The changed distribution and recommendation come from the existing Phase-7 model, not UI arithmetic.
+3. Open **What-if Simulator**, increase traffic and surge, and show the previous/new comparison after the backend debounce. Run **Failure demo** to show that the recommendation increases while authorized funds remain unchanged after provider rejection.
+4. Open **Evidence** and identify the 10,000-record seed/fingerprint. Compare Exact, Fixed 20%, and Optimized on collection success and average excess, then show city diagnostics and the dynamic/static evidence.
+5. Return to **Optimizer** and authorize through the mock provider. Emphasize that recommendation precedes execution and that this phase performs no live Razorpay call.
+
+### Dashboard API
+
+The adapter exposes `GET /api/health`, `POST /api/optimize`, `POST /api/what-if`, `POST /api/mock/authorize`, `POST /api/dynamic-demo`, `GET /api/evidence`, and `GET /api/demo-scenarios`. These routes orchestrate existing services only; they contain no duplicate quantile, objective, risk-policy, or personalization formulas.
+
 ## Tests
 
 ```powershell
 python -m unittest discover -s tests -v
 ```
 
-The suite covers every Phase 1–9 invariant plus provider contracts; exact reserve accounting; state transitions; deterministic mock execution and IDs; create/increase/debit/release idempotency; conflict rejection; partial/full debit; over-debit and invalid release; normalized status; transient/permanent retry behavior; retry key reuse; credential redaction; dynamic success/failure/stale reconciliation; post-ride settlement and shortfall; outcome leakage protection; full mock lifecycle; and Phase-10 CLI workflows.
+The Python suite covers every Phase 1–10 invariant plus the Phase-11 API contract, backend delegation, real what-if recomputation, precomputed evidence provenance, mock-execution separation, and failed-increase authorization invariant.
+
+Frontend checks run from `frontend`:
+
+```powershell
+pnpm test
+pnpm build
+```
+
+The component suite covers optimizer inputs/results, policy changes, explicit mock execution, what-if recalculation, dynamic failure state, and evidence provenance/baselines. The production command runs TypeScript checks before the Vite build.
 
 ## Explicitly not implemented
 
-Phase 10 adds provider-neutral execution architecture and a complete deterministic mock lifecycle. It does not contain:
+Phase 11 adds a dashboard and thin API over the existing core. It does not contain:
 
 - production data or claims that synthetic city profiles are measured statistics;
 - TensorFlow, PyTorch, XGBoost, LightGBM, or an LLM SDK;
@@ -1062,9 +1136,12 @@ Phase 10 adds provider-neutral execution architecture and a complete determinist
 - fabricated or unverified Razorpay network calls;
 - a production database, distributed idempotency store, webhook consumer, or reconciliation worker;
 - mid-ride release recommendations;
-- a frontend or dashboard;
 - production backtesting data.
+- browser-side financial calculations, prediction, optimization, or policy logic;
+- real Razorpay Reserve Pay calls;
+- dashboard authentication, production deployment infrastructure, or persistent sessions;
+- an agent or multi-agent orchestration layer.
 
-## What remains for Phase 11
+## What remains after Phase 11
 
-Phase 11 may add the dashboard, charts, what-if controls, evidence views, and operator-facing lifecycle visualization. It must consume the normalized Reserve Pay state rather than provider-specific payloads. Real Razorpay execution remains gated on approved API documentation and sandbox verification. Agents, customer/merchant behavior changes, ML retraining, policy changes, and unverified provider mappings remain outside Phase 10.
+Production hardening may add authenticated deployment, persistent execution/reconciliation storage, observability, approved real provider mappings, and accessibility/browser automation across the final supported device matrix. Any later agent layer must consume structured outputs and may not replace the deterministic financial engine. Real Razorpay execution remains gated on approved API documentation and sandbox verification.

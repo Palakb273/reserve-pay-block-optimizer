@@ -366,6 +366,23 @@ def _parser() -> argparse.ArgumentParser:
         default=ExplanationLevel.CONCISE.value,
     )
     _add_optimization_arguments(reserve_pay_demo)
+    prepare_evidence = subparsers.add_parser(
+        "prepare-dashboard-evidence",
+        help="precompute deterministic Phase-11 dashboard evidence",
+    )
+    prepare_evidence.add_argument("--count", type=int, default=10_000)
+    prepare_evidence.add_argument("--seed", type=int, default=202611)
+    prepare_evidence.add_argument(
+        "--output",
+        type=Path,
+        default=Path("demo/evidence/dashboard_evidence.json"),
+    )
+    serve_dashboard = subparsers.add_parser(
+        "serve-dashboard",
+        help="serve the Phase-11 FastAPI dashboard adapter",
+    )
+    serve_dashboard.add_argument("--host", default="127.0.0.1")
+    serve_dashboard.add_argument("--port", type=int, default=8000)
     return parser
 
 
@@ -387,7 +404,35 @@ def _error_response(error: DomainValidationError) -> dict[str, object]:
 def main(argv: Sequence[str] | None = None) -> int:
     args = _parser().parse_args(argv)
     try:
-        if args.command == "reserve-pay-demo":
+        if args.command == "prepare-dashboard-evidence":
+            from reserve_pay_optimizer.web.evidence import prepare_dashboard_evidence
+
+            if args.count <= 0:
+                raise ValueError("count must be positive")
+            artifact = prepare_dashboard_evidence(
+                count=args.count,
+                seed=args.seed,
+                output=args.output,
+            )
+            result = {
+                "evidence_status": "complete",
+                "output": str(args.output),
+                "provenance": artifact["provenance"],
+                "strategies": artifact["strategies"],
+            }
+        elif args.command == "serve-dashboard":
+            if not 1 <= args.port <= 65535:
+                raise ValueError("port must be between 1 and 65535")
+            import uvicorn
+
+            uvicorn.run(
+                "reserve_pay_optimizer.web.app:app",
+                host=args.host,
+                port=args.port,
+                reload=False,
+            )
+            return 0
+        elif args.command == "reserve-pay-demo":
             with args.scenario.open("r", encoding="utf-8") as stream:
                 scenario_payload = _load_payload(stream)
             record, history_contexts, history_outcomes = parse_dynamic_scenario(

@@ -4,11 +4,16 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "reserve-pay-block-optimizer"
-version = "0.10.0"
-description = "Provider-neutral Reserve Pay execution for India mobility payments"
+version = "0.11.0"
+description = "Interactive reserve optimization dashboard for India mobility payments"
 readme = "README.md"
 requires-python = ">=3.11"
-dependencies = ["scikit-learn>=1.4,<2"]
+dependencies = [
+  "fastapi>=0.116,<1",
+  "httpx>=0.28,<1",
+  "scikit-learn>=1.4,<2",
+  "uvicorn>=0.35,<1",
+]
 
 [project.scripts]
 reserve-pay-optimizer = "reserve_pay_optimizer.cli:main"
