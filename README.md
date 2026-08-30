@@ -1283,13 +1283,4 @@ All current evidence uses simulator-generated India mobility records. No
 production Razorpay, merchant, Uber, Ola, or customer data is used, and observed
 coverage is not a promise of future performance.
 
-## Phase 14 — Final Demonstration
 
-The implementation is complete through the PRD's final demonstration phase. The
-checked-in [PRD phase status](docs/PRD_PHASE_STATUS.md) maps every phase to code
-and tests. The [3–5 minute demo runbook](docs/DEMO_RUNBOOK.md) presents the problem,
-uncertainty prediction, personalization, policy, dynamic failure invariant, mock
-execution boundary, and generated evidence without hard-coded roadmap examples.
-
-Project version is `0.14.0`. The dashboard remains exactly three screens and the
-agent remains an orchestration layer with no autonomous payment authority.
