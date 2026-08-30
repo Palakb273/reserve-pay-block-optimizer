@@ -65,3 +65,11 @@ class DynamicDemoRequest(BaseModel):
 
     risk_profile: RiskProfileName = "balanced"
     fail_first_increase: bool = False
+
+
+class AgentDecideRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    transaction: OptimizeRequest = Field(default_factory=OptimizeRequest)
+    risk_profile: RiskProfileName | None = None
+    customer_profile: CustomerProfileName | None = None

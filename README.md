@@ -1125,23 +1125,113 @@ pnpm build
 
 The component suite covers optimizer inputs/results, policy changes, explicit mock execution, what-if recalculation, dynamic failure state, and evidence provenance/baselines. The production command runs TypeScript checks before the Vite build.
 
+## Phase 12 — AI Agent Layer
+
+Phase 12 introduces a structured multi-agent orchestration layer over the unchanged deterministic financial services:
+
+```text
+User / API / CLI request
+        ↓
+Reserve Intelligence Agent
+        ↓
+Approved Tool Calls (Allowlisted & Audited)
+ ┌─────────────────────────────┐
+ │ 1. get_customer_history     │
+ │ 2. get_transaction_predict  │
+ │ 3. calculate_risk           │
+ │ 4. optimize_block           │
+ └─────────────────────────────┘
+        ↓
+Existing Deterministic Python Services
+        ↓
+Structured ReserveAgentDecision
+        ↓
+Explanation Agent (Phase-9 evidence)
+        ↓
+AgentResponse (Decision + Trace + Explanation)
+```
+
+### Central Design Principle
+
+> **Agents orchestrate. Existing deterministic services decide.**
+
+The agent does not invent reserve numbers, calculate quantiles, modify lambda weights, or alter merchant risk policies. Tool outputs are authoritative and immutable.
+
+### Two Agent Roles
+
+1. **Reserve Intelligence Agent:** Coordinates approved tools to gather causal context, generate quantile predictions, evaluate risk policy constraints, and optimize the reserve block.
+2. **Explanation Agent:** Translates the authoritative decision into clear, human-readable explanations using structured Phase-9 evidence. It cannot alter the computed reserve amount.
+
+### Approved Tool Registry
+
+| Tool | Purpose | Source Service |
+|---|---|---|
+| `get_customer_history()` | Retrieves completed ride metrics before the ride timestamp. | `CustomerHistoryProvider` |
+| `get_transaction_prediction()` | Predicts Q05–Q99 quantiles via base or personalized models. | `PersonalizedFarePredictor` |
+| `calculate_risk()` | Evaluates policy feasibility and target coverage. | `ReserveRiskPolicy` |
+| `optimize_block()` | Optimizes minimal reserve block satisfying policy. | `PolicyConstrainedOptimizer` |
+| `get_merchant_history()` | Honestly reports that merchant history is unavailable. | Explicit status `unavailable` |
+
+### Security & Safety Boundaries
+
+- **No Mutating Payment Authority:** No agent is given authority to autonomously create, increase, debit, or release Reserve Pay funds. Payment execution remains an explicit operator action.
+- **No Arbitrary Tool Execution:** The tool registry strictly allowlists approved tools. The model cannot execute shell commands, eval Python code, inspect environment secrets, or make network calls.
+- **Strict Decision Consistency:** Final decisions are validated against optimizer outputs. Any modification raises `DecisionConsistencyError`.
+- **Bounded Execution:** Agent loops enforce strict step limits (`max_steps = 8`) to prevent infinite iterations.
+
+### Direct vs. Agent-Orchestrated Equivalence
+
+For identical inputs, direct service execution and agent orchestration produce **100% identical financial results**:
+- Recommended block paise
+- Estimated collection probability
+- Risk profile
+- Objective score
+
+### CLI Usage
+
+```powershell
+python -m reserve_pay_optimizer agent-decide `
+  --model artifacts/prediction/fare_distribution_personalized_v1 `
+  --base-model artifacts/prediction/fare_distribution_v1 `
+  --history examples/personalization_stable_history.json `
+  --file examples/personalization_current_ride.json `
+  --risk-profile balanced `
+  --show-trace
+```
+
+### Agent API
+
+- `POST /api/agent/decide`: Runs the full agent orchestration pipeline.
+- `GET /api/agent/capabilities`: Reports available tools, model mode, and merchant history status.
+- `GET /api/agent/runs/{run_id}`: Retrieves in-memory tool execution traces.
+
+## Tests
+
+```powershell
+python -m unittest discover -s tests -v
+```
+
+The Python test suite covers 216 tests across all phases (domain, simulator, baselines, prediction, optimization, policy, dynamic re-optimization, explainability, Reserve Pay execution, web API, and agent orchestration).
+
+Frontend checks run from `frontend`:
+
+```powershell
+pnpm test
+pnpm build
+```
+
 ## Explicitly not implemented
 
-Phase 11 adds a dashboard and thin API over the existing core. It does not contain:
+Phase 12 adds an AI agent orchestration layer. It does not contain:
 
-- production data or claims that synthetic city profiles are measured statistics;
-- TensorFlow, PyTorch, XGBoost, LightGBM, or an LLM SDK;
-- merchant personalization;
-- a vendor LLM SDK, live generated-text provider, tool-calling agent, or agent framework;
-- fabricated or unverified Razorpay network calls;
-- a production database, distributed idempotency store, webhook consumer, or reconciliation worker;
-- mid-ride release recommendations;
-- production backtesting data.
-- browser-side financial calculations, prediction, optimization, or policy logic;
-- real Razorpay Reserve Pay calls;
-- dashboard authentication, production deployment infrastructure, or persistent sessions;
-- an agent or multi-agent orchestration layer.
+- browser-side financial calculations;
+- autonomous funds movement or automated capture;
+- fake merchant risk scores or fabricated merchant transaction history;
+- vendor LLM API dependencies for test execution;
+- a fourth top-level dashboard screen;
+- production database or distributed state storage.
 
-## What remains after Phase 11
+## What remains for Phase 13
 
-Production hardening may add authenticated deployment, persistent execution/reconciliation storage, observability, approved real provider mappings, and accessibility/browser automation across the final supported device matrix. Any later agent layer must consume structured outputs and may not replace the deterministic financial engine. Real Razorpay execution remains gated on approved API documentation and sandbox verification.
+Phase 13 will introduce **Evaluation & Evidence** (comprehensive validation, benchmark comparisons, and publication-ready evidence artifacts). Phase 14 will produce the judging presentation.
+

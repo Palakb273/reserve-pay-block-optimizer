@@ -28,8 +28,11 @@ from reserve_pay_optimizer.reserve_pay.mock_provider import (
 from reserve_pay_optimizer.reserve_pay.service import ReservePayService
 from reserve_pay_optimizer.services.evaluation_input import parse_evaluation_dataset
 from reserve_pay_optimizer.services.mobility_validation import parse_mobility_transaction
+from reserve_pay_optimizer.agents.models import ReserveAgentRequest
+from reserve_pay_optimizer.agents.orchestrator import AgentOrchestrator
 from reserve_pay_optimizer.web.errors import DashboardError
 from reserve_pay_optimizer.web.schemas import (
+    AgentDecideRequest,
     DynamicDemoRequest,
     MockAuthorizeRequest,
     OptimizeRequest,
@@ -105,6 +108,17 @@ class DashboardService:
             self.dynamic_history,
         )
         self.dynamic_service = DynamicRideService(self.dynamic_predictor, self.optimizer)
+        self.orchestrators = {
+            profile: AgentOrchestrator(
+                base_model=self.base_artifact.model,
+                personalized_model=self.personalized_artifact.model,
+                history_provider=predictor.history_provider,
+                optimizer=self.optimizer,
+                explanation_service=self.explanations,
+            )
+            for profile, predictor in self.predictors.items()
+        }
+        self.runs_store: dict[str, dict[str, Any]] = {}
 
     def _read_json(self, relative: str) -> object:
         path = self.settings.repository_root / relative
@@ -404,3 +418,46 @@ class DashboardService:
                 key: str(value) for key, value in TRAFFIC_DURATION_MULTIPLIERS.items()
             },
         }
+
+    def agent_capabilities(self) -> dict[str, object]:
+        return {
+            "available_tools": [
+                "get_customer_history",
+                "get_transaction_prediction",
+                "calculate_risk",
+                "optimize_block",
+                "get_merchant_history",
+            ],
+            "agent_model_mode": "deterministic_offline",
+            "merchant_history_available": False,
+            "merchant_history_reason": "Merchant-history subsystem is not implemented.",
+            "llm_provider_available": False,
+            "mutating_payment_tools_enabled": False,
+            "project_version": __version__,
+        }
+
+    def agent_decide(self, request: AgentDecideRequest) -> dict[str, object]:
+        customer_profile = request.customer_profile or request.transaction.customer_profile
+        risk_profile_str = request.risk_profile or request.transaction.risk_profile
+        orchestrator = self.orchestrators[customer_profile]
+        context = self._context(request.transaction)
+        policy = RiskProfile(risk_profile_str)
+        
+        agent_req = ReserveAgentRequest(
+            transaction=context,
+            risk_profile=policy,
+            customer_history_profile=customer_profile,
+        )
+        response = orchestrator.run(agent_req)
+        response_dict = response.to_dict()
+        self.runs_store[response.run_id] = response_dict
+        return response_dict
+
+    def agent_run(self, run_id: str) -> dict[str, object]:
+        if run_id not in self.runs_store:
+            raise DashboardError(
+                "agent_run_not_found",
+                f"Agent run '{run_id}' not found in in-memory session store.",
+                status_code=404,
+            )
+        return self.runs_store[run_id]

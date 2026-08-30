@@ -43,6 +43,58 @@ export interface OptimizeResponse {
   meta: { project_version: string; processing_ms: number; financial_logic_location: string }
 }
 
+export interface ToolAuditRecord {
+  sequence: number
+  tool_name: string
+  input_fingerprint_sha256: string
+  output_fingerprint_sha256: string
+  arguments: Record<string, unknown>
+  result: Record<string, unknown>
+  started_at: string
+  completed_at: string
+  status: string
+  error?: string | null
+}
+
+export interface AgentDecideResponse {
+  run_id: string
+  decision: {
+    transaction_id: string
+    agent_run_id: string
+    recommended_block_paise: number
+    estimated_collection_probability: string
+    estimated_under_block_probability: string
+    risk_profile: RiskProfile
+    risk: 'LOW' | 'MEDIUM' | 'HIGH'
+    prediction_mode: string
+    history_count: number
+    model_version: string
+    objective_score: string
+    reason_code: string
+    reason: string
+    confidence: string
+    merchant_history_available: boolean
+    merchant_history: Record<string, unknown> | null
+  }
+  explanation: {
+    transaction_id: string
+    agent_run_id: string
+    explanation_id: string
+    summary: string
+    details: string
+    factors: Array<{ code: string; label: string; direction: string; evidence: Record<string, unknown> }>
+    confidence_note: string
+    renderer: string
+  }
+  tool_trace: ToolAuditRecord[]
+  metrics: {
+    processing_ms: number
+    step_count: number
+    tool_call_count: number
+    financial_logic_location: string
+  }
+}
+
 export interface WhatIfResponse {
   previous: OptimizeResponse
   revised: OptimizeResponse

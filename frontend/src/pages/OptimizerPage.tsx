@@ -1,10 +1,10 @@
 import { useEffect, useState, type FormEvent } from 'react'
-import { CheckCircle2, ChevronDown, RefreshCcw, ShieldCheck, Sparkles, WalletCards } from 'lucide-react'
+import { Bot, CheckCircle2, ChevronDown, RefreshCcw, ShieldCheck, Sparkles, WalletCards } from 'lucide-react'
 import { api, DashboardApiError } from '../api/client'
 import { DEFAULT_TRANSACTION } from '../app/defaults'
 import { QuantileRail } from '../components/QuantileRail'
 import { ErrorState, LoadingState } from '../components/States'
-import type { City, CustomerProfile, OptimizeInput, OptimizeResponse, RiskProfile } from '../types/api'
+import type { AgentDecideResponse, City, CustomerProfile, OptimizeInput, OptimizeResponse, RiskProfile } from '../types/api'
 import { formatMoney, formatProbability, titleCase } from '../utils/format'
 
 const profiles: Array<{ id: RiskProfile; label: string; target: string }> = [
@@ -16,14 +16,29 @@ const profiles: Array<{ id: RiskProfile; label: string; target: string }> = [
 export function OptimizerPage() {
   const [input, setInput] = useState<OptimizeInput>({ ...DEFAULT_TRANSACTION })
   const [result, setResult] = useState<OptimizeResponse | null>(null)
+  const [agentResult, setAgentResult] = useState<AgentDecideResponse | null>(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
   const [execution, setExecution] = useState<Record<string, unknown> | null>(null)
   const [executing, setExecuting] = useState(false)
+  const [showAgentTrace, setShowAgentTrace] = useState(false)
 
   const optimize = async (payload = input) => {
     setLoading(true); setError(''); setExecution(null)
-    try { setResult(await api.optimize(payload)) }
+    try {
+      const [directRes, agentRes] = await Promise.allSettled([
+        api.optimize(payload),
+        api.agentDecide(payload),
+      ])
+      if (directRes.status === 'fulfilled') {
+        setResult(directRes.value)
+      } else {
+        throw directRes.reason
+      }
+      if (agentRes.status === 'fulfilled') {
+        setAgentResult(agentRes.value)
+      }
+    }
     catch (reason) { setError(reason instanceof DashboardApiError ? reason.message : 'The optimization service is unavailable.') }
     finally { setLoading(false) }
   }
@@ -76,6 +91,46 @@ export function OptimizerPage() {
             <div className="policy-strip"><ShieldCheck size={18} /><div><strong>{titleCase(result.policy.profile)} merchant policy</strong><span>Minimum modeled coverage {formatProbability(result.policy.target_collection_probability)}</span></div></div>
           </article>
           <QuantileRail result={result} />
+
+          {/* Phase 12 Agent Orchestration Trace */}
+          {agentResult && (
+            <article className="panel agent-panel">
+              <div className="panel-heading" style={{ cursor: 'pointer' }} onClick={() => setShowAgentTrace(!showAgentTrace)}>
+                <div>
+                  <span className="step-number"><Bot size={16} /></span>
+                  <div>
+                    <h2>Reserve Intelligence Agent Trace</h2>
+                    <p>Orchestration of deterministic intelligence services</p>
+                  </div>
+                </div>
+                <button type="button" className="ghost-button" onClick={(e) => { e.stopPropagation(); setShowAgentTrace(!showAgentTrace); }}>
+                  {showAgentTrace ? 'Hide Trace' : 'View Tool Trace'} <ChevronDown size={14} style={{ transform: showAgentTrace ? 'rotate(180deg)' : 'none', transition: 'transform 0.2s' }} />
+                </button>
+              </div>
+              <div className="agent-summary-strip">
+                <span>Run ID: <strong>{agentResult.run_id}</strong></span>
+                <span>Risk Level: <strong>{agentResult.decision.risk}</strong></span>
+                <span>Tool Calls: <strong>{agentResult.tool_trace.length}</strong></span>
+                <span>Time: <strong>{agentResult.metrics.processing_ms} ms</strong></span>
+              </div>
+              {showAgentTrace && (
+                <div className="tool-trace-list" style={{ marginTop: '12px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                  {agentResult.tool_trace.map((tool) => (
+                    <div key={tool.sequence} className="tool-trace-item" style={{ padding: '8px 12px', background: '#f6faf8', border: '1px solid #dfe9e4', borderRadius: '8px', fontSize: '12px' }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 600 }}>
+                        <span>{tool.sequence}. {tool.tool_name}</span>
+                        <span style={{ color: '#0e7c66' }}>✓ {tool.status}</span>
+                      </div>
+                      <div style={{ color: '#687973', fontSize: '11px', marginTop: '4px' }}>
+                        Input hash: <code>{tool.input_fingerprint_sha256.slice(0, 10)}…</code> · Output hash: <code>{tool.output_fingerprint_sha256.slice(0, 10)}…</code>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </article>
+          )}
+
           <article className="panel explanation-panel">
             <div className="panel-heading"><div><span className="step-number">03</span><div><h2>Why this amount?</h2><p>Deterministic evidence from the completed decision</p></div></div></div>
             <p className="explanation-copy">{result.explanation.summary}</p>

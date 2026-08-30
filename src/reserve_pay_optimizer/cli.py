@@ -383,6 +383,21 @@ def _parser() -> argparse.ArgumentParser:
     )
     serve_dashboard.add_argument("--host", default="127.0.0.1")
     serve_dashboard.add_argument("--port", type=int, default=8000)
+    agent_decide = subparsers.add_parser(
+        "agent-decide",
+        help="orchestrate Reserve Intelligence Agent tools to obtain a reserve decision",
+    )
+    agent_decide.add_argument("--model", type=Path, required=True)
+    agent_decide.add_argument("--base-model", type=Path, required=True)
+    agent_decide.add_argument("--history", type=Path, required=True)
+    agent_decide.add_argument("--file", type=Path, required=True)
+    agent_decide.add_argument(
+        "--risk-profile",
+        choices=[profile.value for profile in RiskProfile],
+        default=RiskProfile.BALANCED.value,
+    )
+    agent_decide.add_argument("--show-trace", action="store_true", help="include the tool audit trace")
+    _add_optimization_arguments(agent_decide)
     return parser
 
 
@@ -432,6 +447,38 @@ def main(argv: Sequence[str] | None = None) -> int:
                 reload=False,
             )
             return 0
+        elif args.command == "agent-decide":
+            from reserve_pay_optimizer.agents.models import ReserveAgentRequest
+            from reserve_pay_optimizer.agents.orchestrator import AgentOrchestrator
+
+            with args.file.open("r", encoding="utf-8") as stream:
+                payload = _load_payload(stream)
+            context = parse_mobility_transaction(payload)  # type: ignore[arg-type]
+            with args.history.open("r", encoding="utf-8") as stream:
+                history_payload = _load_payload(stream)
+            history_contexts, history_outcomes = parse_evaluation_dataset(
+                history_payload  # type: ignore[arg-type]
+            )
+            base_artifact = load_predictor_artifact(args.base_model)
+            personalized_artifact = load_personalized_artifact(args.model)
+            history_provider = InMemoryCustomerHistoryProvider(
+                history_contexts, history_outcomes
+            )
+            optimizer = ReserveBlockOptimizer(_optimization_config(args))
+            orchestrator = AgentOrchestrator(
+                base_model=base_artifact.model,
+                personalized_model=personalized_artifact.model,
+                history_provider=history_provider,
+                optimizer=optimizer,
+            )
+            policy = RiskProfile(args.risk_profile)
+            response = orchestrator.run(
+                ReserveAgentRequest(transaction=context, risk_profile=policy)
+            )
+            response_dict = response.to_dict()
+            if not args.show_trace:
+                response_dict.pop("tool_trace", None)
+            result = response_dict
         elif args.command == "reserve-pay-demo":
             with args.scenario.open("r", encoding="utf-8") as stream:
                 scenario_payload = _load_payload(stream)

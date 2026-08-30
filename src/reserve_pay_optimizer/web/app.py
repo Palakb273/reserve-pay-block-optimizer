@@ -14,6 +14,7 @@ from reserve_pay_optimizer.domain.errors import DomainValidationError
 from reserve_pay_optimizer.reserve_pay.errors import ReservePayError
 from reserve_pay_optimizer.web.errors import DashboardError
 from reserve_pay_optimizer.web.schemas import (
+    AgentDecideRequest,
     DynamicDemoRequest,
     MockAuthorizeRequest,
     OptimizeRequest,
@@ -144,6 +145,18 @@ def create_app(settings: DashboardSettings | None = None) -> FastAPI:
     @application.get("/api/demo-scenarios")
     def demo_scenarios(service: DashboardService = Depends(dashboard)):
         return service.demo_scenarios()
+
+    @application.get("/api/agent/capabilities")
+    def agent_capabilities(service: DashboardService = Depends(dashboard)):
+        return service.agent_capabilities()
+
+    @application.post("/api/agent/decide")
+    def agent_decide(payload: AgentDecideRequest, service: DashboardService = Depends(dashboard)):
+        return service.agent_decide(payload)
+
+    @application.get("/api/agent/runs/{run_id}")
+    def agent_run(run_id: str, service: DashboardService = Depends(dashboard)):
+        return service.agent_run(run_id)
 
     return application
 
