@@ -4,7 +4,7 @@ from datetime import datetime
 from decimal import Decimal
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 CityName = Literal[
     "delhi",
@@ -30,6 +30,7 @@ class OptimizeRequest(BaseModel):
     estimated_duration_minutes: int = Field(default=42, ge=0)
     surge_multiplier: Decimal = Field(default=Decimal("1.18"), gt=0)
     timestamp: datetime = datetime.fromisoformat("2027-01-15T18:30:00+05:30")
+    customer_id: str | None = Field(default=None, min_length=1, max_length=100)
     customer_profile: CustomerProfileName = "stable_history"
     risk_profile: RiskProfileName = "balanced"
 
@@ -73,3 +74,30 @@ class AgentDecideRequest(BaseModel):
     transaction: OptimizeRequest = Field(default_factory=OptimizeRequest)
     risk_profile: RiskProfileName | None = None
     customer_profile: CustomerProfileName | None = None
+
+
+class CompletedRideRequest(BaseModel):
+    """A completed production ride used for future, leakage-safe personalization."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    transaction_id: str = Field(min_length=1, max_length=100)
+    customer_id: str = Field(min_length=1, max_length=100)
+    estimated_amount_paise: int = Field(gt=0)
+    actual_amount_paise: int = Field(gt=0)
+    city: CityName
+    distance_km: Decimal = Field(ge=0)
+    estimated_duration_minutes: int = Field(ge=0)
+    surge_multiplier: Decimal = Field(gt=0)
+    timestamp: datetime
+    completed_at: datetime
+
+    @model_validator(mode="after")
+    def validate_timestamps(self) -> "CompletedRideRequest":
+        if self.timestamp.tzinfo is None or self.timestamp.utcoffset() is None:
+            raise ValueError("timestamp must include a UTC offset")
+        if self.completed_at.tzinfo is None or self.completed_at.utcoffset() is None:
+            raise ValueError("completed_at must include a UTC offset")
+        if self.completed_at < self.timestamp:
+            raise ValueError("completed_at cannot be before timestamp")
+        return self

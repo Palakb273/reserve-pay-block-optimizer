@@ -1,5 +1,7 @@
 # Reserve Pay Block Optimizer
 
+> **New:** The dashboard can run in an optional MongoDB-backed mode while the existing synthetic fixture mode remains the default for demos and tests. See [MongoDB production mode](docs/PRODUCTION_MONGODB.md) for configuration, ingestion, indexes, readiness, and remaining go-live work.
+
 This Python 3.11+ and React/TypeScript project defines, simulates, predicts, optimizes, dynamically revises, explains, executes, and demonstrates reserve blocks for India-first mobility payments. Phase 11 adds a polished three-screen decision dashboard over the unchanged Python financial engine.
 
 ## Problem

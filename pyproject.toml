@@ -15,6 +15,11 @@ dependencies = [
   "uvicorn>=0.35,<1",
 ]
 
+[project.optional-dependencies]
+mongodb = [
+  "pymongo>=4.10,<5",
+]
+
 [project.scripts]
 reserve-pay-optimizer = "reserve_pay_optimizer.cli:main"
 

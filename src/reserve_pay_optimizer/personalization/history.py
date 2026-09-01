@@ -17,9 +17,19 @@ def calculate_customer_history_features(
     eligible = tuple(
         record for record in records if record.context.customer_id == customer_id
     )
-    if not eligible:
+    return calculate_customer_history_features_from_ratios(
+        customer_id, tuple(record.fare_ratio for record in eligible)
+    )
+
+
+def calculate_customer_history_features_from_ratios(
+    customer_id: str,
+    ratios: Sequence[Decimal],
+) -> CustomerHistoryFeatures:
+    """Apply the canonical history formulas to trusted completed-ride ratios."""
+
+    if not ratios:
         return CustomerHistoryFeatures.cold_start(customer_id)
-    ratios = tuple(record.fare_ratio for record in eligible)
     count = Decimal(len(ratios))
     mean = sum(ratios, Decimal(0)) / count
     variance = sum(((ratio - mean) ** 2 for ratio in ratios), Decimal(0)) / count

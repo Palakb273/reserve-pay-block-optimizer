@@ -3,8 +3,9 @@
 from __future__ import annotations
 
 from contextlib import asynccontextmanager
+from hmac import compare_digest
 
-from fastapi import Depends, FastAPI, Request
+from fastapi import Depends, FastAPI, Header, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
@@ -15,6 +16,7 @@ from reserve_pay_optimizer.reserve_pay.errors import ReservePayError
 from reserve_pay_optimizer.web.errors import DashboardError
 from reserve_pay_optimizer.web.schemas import (
     AgentDecideRequest,
+    CompletedRideRequest,
     DynamicDemoRequest,
     MockAuthorizeRequest,
     OptimizeRequest,
@@ -24,15 +26,20 @@ from reserve_pay_optimizer.web.services import DashboardService, DashboardSettin
 
 
 def create_app(settings: DashboardSettings | None = None) -> FastAPI:
+    resolved_settings = settings or DashboardSettings.from_environment()
+
     @asynccontextmanager
     async def lifespan(application: FastAPI):
         try:
-            application.state.dashboard_service = DashboardService(settings)
+            application.state.dashboard_service = DashboardService(resolved_settings)
             application.state.dashboard_load_error = None
         except DashboardError as exc:
             application.state.dashboard_service = None
             application.state.dashboard_load_error = exc
         yield
+        service = getattr(application.state, "dashboard_service", None)
+        if service is not None:
+            service.close()
 
     application = FastAPI(
         title="Reserve Pay Block Optimizer Dashboard API",
@@ -41,7 +48,7 @@ def create_app(settings: DashboardSettings | None = None) -> FastAPI:
     )
     application.add_middleware(
         CORSMiddleware,
-        allow_origins=["http://localhost:5173", "http://127.0.0.1:5173"],
+        allow_origins=list(resolved_settings.cors_origins),
         allow_credentials=False,
         allow_methods=["GET", "POST"],
         allow_headers=["Content-Type"],
@@ -116,6 +123,14 @@ def create_app(settings: DashboardSettings | None = None) -> FastAPI:
         loaded = getattr(request.app.state, "dashboard_service", None) is not None
         return {"status": "ok", "version": __version__, "models_loaded": loaded}
 
+    @application.get("/api/ready")
+    def ready(service: DashboardService = Depends(dashboard)):
+        state = service.readiness()
+        return JSONResponse(
+            status_code=200 if state["storage_ready"] else 503,
+            content=state,
+        )
+
     @application.post("/api/optimize")
     def optimize(payload: OptimizeRequest, service: DashboardService = Depends(dashboard)):
         return service.optimize(payload)
@@ -154,9 +169,28 @@ def create_app(settings: DashboardSettings | None = None) -> FastAPI:
     def agent_decide(payload: AgentDecideRequest, service: DashboardService = Depends(dashboard)):
         return service.agent_decide(payload)
 
+    @application.get("/api/optimization-runs/{run_id}")
+    def optimization_run(run_id: str, service: DashboardService = Depends(dashboard)):
+        return service.optimization_run(run_id)
+
     @application.get("/api/agent/runs/{run_id}")
     def agent_run(run_id: str, service: DashboardService = Depends(dashboard)):
         return service.agent_run(run_id)
+
+    @application.post("/api/rides/completed")
+    def completed_ride(
+        payload: CompletedRideRequest,
+        x_api_key: str | None = Header(default=None, alias="X-API-Key"),
+        service: DashboardService = Depends(dashboard),
+    ):
+        expected = service.settings.ingest_api_key
+        if expected is None or x_api_key is None or not compare_digest(x_api_key, expected):
+            raise DashboardError(
+                "ingest_unauthorized",
+                "A valid ingestion API key is required.",
+                status_code=401,
+            )
+        return service.ingest_completed_ride(payload)
 
     return application
 

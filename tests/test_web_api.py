@@ -69,6 +69,46 @@ class DashboardApiTests(unittest.TestCase):
         })
         self.assertGreater(body["decision"]["recommended_block_paise"], 0)
         self.assertEqual(body["meta"]["financial_logic_location"], "python_backend")
+        self.assertEqual(body["meta"]["data_mode"], "demo")
+        self.assertTrue(body["meta"]["run_id"].startswith("opt_"))
+
+        stored = self.client.get(f"/api/optimization-runs/{body['meta']['run_id']}")
+        self.assertEqual(stored.status_code, 200)
+        self.assertEqual(stored.json()["transaction_id"], "DASH-TEST-001")
+
+    def test_readiness_exposes_storage_mode(self) -> None:
+        response = self.client.get("/api/ready")
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(
+            response.json(),
+            {
+                "status": "ready",
+                "data_mode": "demo",
+                "storage_backend": "memory",
+                "storage_ready": True,
+                "models_loaded": True,
+            },
+        )
+
+    def test_production_ride_ingest_is_not_exposed_in_demo(self) -> None:
+        response = self.client.post(
+            "/api/rides/completed",
+            headers={"X-API-Key": "not-configured"},
+            json={
+                "transaction_id": "DASH-TEST-001",
+                "customer_id": "C-REAL-001",
+                "estimated_amount_paise": 65000,
+                "actual_amount_paise": 70000,
+                "city": "hyderabad",
+                "distance_km": "18.4",
+                "estimated_duration_minutes": 42,
+                "surge_multiplier": "1.18",
+                "timestamp": "2027-01-15T18:30:00+05:30",
+                "completed_at": "2027-01-15T19:30:00+05:30",
+            },
+        )
+        self.assertEqual(response.status_code, 401)
+        self.assertEqual(response.json()["error"]["code"], "ingest_unauthorized")
 
     def test_what_if_returns_recomputed_backend_differences(self) -> None:
         response = self.client.post(

@@ -10,6 +10,7 @@ export interface OptimizeInput {
   estimated_duration_minutes: number
   surge_multiplier: string
   timestamp: string
+  customer_id?: string
   customer_profile: CustomerProfile
   risk_profile: RiskProfile
 }
@@ -40,7 +41,13 @@ export interface OptimizeResponse {
     history_summary: null | Record<string, string | number>
     explanation_id: string
   }
-  meta: { project_version: string; processing_ms: number; financial_logic_location: string }
+  meta: {
+    project_version: string
+    processing_ms: number
+    financial_logic_location: string
+    data_mode: 'demo' | 'mongodb'
+    run_id: string
+  }
 }
 
 export interface ToolAuditRecord {

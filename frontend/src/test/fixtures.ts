@@ -25,7 +25,13 @@ export const optimizeResponse: OptimizeResponse = {
     objective_components: { under_block: '0.120000', excess: '0.043420' },
     candidate_comparison: [], history_summary: { eligible_rides: 8 }, explanation_id: 'exp-test-1',
   },
-  meta: { project_version: '0.14.0', processing_ms: 13.2, financial_logic_location: 'python_backend' },
+  meta: {
+    project_version: '0.14.0',
+    processing_ms: 13.2,
+    financial_logic_location: 'python_backend',
+    data_mode: 'demo',
+    run_id: 'opt_test_fixture',
+  },
 }
 
 export const revisedResponse: OptimizeResponse = {

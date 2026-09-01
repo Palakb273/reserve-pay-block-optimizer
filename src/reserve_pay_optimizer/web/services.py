@@ -2,11 +2,13 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from decimal import Decimal, ROUND_HALF_UP
 import json
+import os
 from pathlib import Path
 from time import perf_counter
+from typing import Any, Literal
 
 from reserve_pay_optimizer import __version__
 from reserve_pay_optimizer.dynamic.serialization import parse_dynamic_scenario
@@ -33,10 +35,16 @@ from reserve_pay_optimizer.agents.orchestrator import AgentOrchestrator
 from reserve_pay_optimizer.web.errors import DashboardError
 from reserve_pay_optimizer.web.schemas import (
     AgentDecideRequest,
+    CompletedRideRequest,
     DynamicDemoRequest,
     MockAuthorizeRequest,
     OptimizeRequest,
     WhatIfRequest,
+)
+from reserve_pay_optimizer.web.storage import (
+    ApplicationStore,
+    InMemoryApplicationStore,
+    MongoApplicationStore,
 )
 
 TRAFFIC_DURATION_MULTIPLIERS = {
@@ -57,6 +65,48 @@ class DashboardSettings:
     base_model_path: Path | None = None
     personalized_model_path: Path | None = None
     evidence_path: Path | None = None
+    data_mode: Literal["demo", "mongodb"] = "demo"
+    mongodb_uri: str | None = field(default=None, repr=False)
+    mongodb_database: str = "reserve_pay_optimizer"
+    ingest_api_key: str | None = field(default=None, repr=False)
+    cors_origins: tuple[str, ...] = (
+        "http://localhost:5173",
+        "http://127.0.0.1:5173",
+    )
+
+    @classmethod
+    def from_environment(cls) -> "DashboardSettings":
+        data_mode = os.getenv("RPO_DATA_MODE", "demo").strip().lower()
+        if data_mode not in {"demo", "mongodb"}:
+            raise DashboardError(
+                "invalid_data_mode",
+                "RPO_DATA_MODE must be either 'demo' or 'mongodb'.",
+                status_code=503,
+            )
+        origins = tuple(
+            item.strip()
+            for item in os.getenv(
+                "RPO_CORS_ORIGINS",
+                "http://localhost:5173,http://127.0.0.1:5173",
+            ).split(",")
+            if item.strip()
+        )
+        ingest_key = os.getenv("RPO_INGEST_API_KEY")
+        if data_mode == "mongodb" and (not ingest_key or len(ingest_key) < 32):
+            raise DashboardError(
+                "ingest_key_configuration_error",
+                "RPO_INGEST_API_KEY must contain at least 32 characters in MongoDB mode.",
+                status_code=503,
+            )
+        return cls(
+            data_mode=data_mode,  # type: ignore[arg-type]
+            mongodb_uri=os.getenv("MONGODB_URI"),
+            mongodb_database=os.getenv(
+                "MONGODB_DATABASE", "reserve_pay_optimizer"
+            ).strip(),
+            ingest_api_key=ingest_key,
+            cors_origins=origins,
+        )
 
     @property
     def resolved_base_model(self) -> Path:
@@ -80,8 +130,13 @@ class DashboardService:
         "overrun_prone": "C-OVERRUN",
     }
 
-    def __init__(self, settings: DashboardSettings | None = None) -> None:
-        self.settings = settings or DashboardSettings()
+    def __init__(
+        self,
+        settings: DashboardSettings | None = None,
+        *,
+        store: ApplicationStore | None = None,
+    ) -> None:
+        self.settings = settings or DashboardSettings.from_environment()
         try:
             self.base_artifact = load_predictor_artifact(
                 self.settings.resolved_base_model
@@ -95,19 +150,31 @@ class DashboardService:
                 "Trusted dashboard model artifacts could not be loaded.",
                 status_code=503,
             ) from exc
-        self.predictors = self._load_demo_predictors()
+        self.store = store or self._build_store()
         self.optimizer = ReserveBlockOptimizer()
         self.policy_optimizer = PolicyConstrainedOptimizer(self.optimizer)
         self.explanations = ExplanationService()
-        self.mock_provider = MockReserveProvider()
-        self.reserve_service = ReservePayService(self.mock_provider)
-        self.dynamic_record, self.dynamic_history = self._load_dynamic_scenario()
-        self.dynamic_predictor = PersonalizedFarePredictor(
-            self.base_artifact.model,
-            self.personalized_artifact.model,
-            self.dynamic_history,
-        )
-        self.dynamic_service = DynamicRideService(self.dynamic_predictor, self.optimizer)
+        if self.settings.data_mode == "demo":
+            self.predictors = self._load_demo_predictors()
+            self.mock_provider = MockReserveProvider()
+            self.reserve_service = ReservePayService(self.mock_provider)
+            self.dynamic_record, self.dynamic_history = self._load_dynamic_scenario()
+            self.dynamic_predictor = PersonalizedFarePredictor(
+                self.base_artifact.model,
+                self.personalized_artifact.model,
+                self.dynamic_history,
+            )
+            self.dynamic_service = DynamicRideService(
+                self.dynamic_predictor, self.optimizer
+            )
+        else:
+            self.predictors = {}
+            self.mock_provider = None
+            self.reserve_service = None
+            self.dynamic_record = None
+            self.dynamic_history = None
+            self.dynamic_predictor = None
+            self.dynamic_service = None
         self.orchestrators = {
             profile: AgentOrchestrator(
                 base_model=self.base_artifact.model,
@@ -118,7 +185,51 @@ class DashboardService:
             )
             for profile, predictor in self.predictors.items()
         }
-        self.runs_store: dict[str, dict[str, Any]] = {}
+        if self.settings.data_mode == "mongodb":
+            self.production_predictor = PersonalizedFarePredictor(
+                self.base_artifact.model,
+                self.personalized_artifact.model,
+                self.store,  # type: ignore[arg-type]
+            )
+            self.production_orchestrator = AgentOrchestrator(
+                base_model=self.base_artifact.model,
+                personalized_model=self.personalized_artifact.model,
+                history_provider=self.store,  # type: ignore[arg-type]
+                optimizer=self.optimizer,
+                explanation_service=self.explanations,
+            )
+        else:
+            self.production_predictor = None
+            self.production_orchestrator = None
+
+    def _build_store(self) -> ApplicationStore:
+        if self.settings.data_mode == "demo":
+            return InMemoryApplicationStore()
+        return MongoApplicationStore(
+            self.settings.mongodb_uri or "",
+            self.settings.mongodb_database,
+        )
+
+    def close(self) -> None:
+        self.store.close()
+
+    def readiness(self) -> dict[str, object]:
+        ready = self.store.ready()
+        return {
+            "status": "ready" if ready else "not_ready",
+            "data_mode": self.settings.data_mode,
+            "storage_backend": self.store.backend,
+            "storage_ready": ready,
+            "models_loaded": True,
+        }
+
+    def _ensure_demo_enabled(self) -> None:
+        if self.settings.data_mode != "demo":
+            raise DashboardError(
+                "demo_endpoint_disabled",
+                "This synthetic demo endpoint is disabled in MongoDB mode.",
+                status_code=404,
+            )
 
     def _read_json(self, relative: str) -> object:
         path = self.settings.repository_root / relative
@@ -167,7 +278,17 @@ class DashboardService:
         return record, InMemoryCustomerHistoryProvider(contexts, outcomes)
 
     def _context(self, request: OptimizeRequest):
-        customer_id = self._PROFILE_CUSTOMERS[request.customer_profile]
+        if self.settings.data_mode == "mongodb":
+            if not request.customer_id:
+                raise DashboardError(
+                    "customer_id_required",
+                    "customer_id is required in MongoDB mode.",
+                    status_code=422,
+                    details=[{"field": "customer_id", "code": "required"}],
+                )
+            customer_id = request.customer_id
+        else:
+            customer_id = request.customer_id or self._PROFILE_CUSTOMERS[request.customer_profile]
         return parse_mobility_transaction(
             {
                 "transaction_id": request.transaction_id,
@@ -184,7 +305,12 @@ class DashboardService:
     def optimize(self, request: OptimizeRequest) -> dict[str, object]:
         started = perf_counter()
         context = self._context(request)
-        predictor = self.predictors[request.customer_profile]
+        predictor = (
+            self.production_predictor
+            if self.settings.data_mode == "mongodb"
+            else self.predictors[request.customer_profile]
+        )
+        assert predictor is not None
         prediction = predictor.predict(context)
         policy = ReserveRiskPolicy.for_profile(RiskProfile(request.risk_profile))
         optimization = self.policy_optimizer.optimize(context, prediction, policy)
@@ -199,7 +325,7 @@ class DashboardService:
             for key in ("0.05", "0.50", "0.90", "0.95", "0.97", "0.99")
         }
         facts = detailed.facts.facts_dict()
-        return {
+        result: dict[str, Any] = {
             "transaction": context.to_dict(),
             "prediction": {
                 "mode": prediction.prediction_mode,
@@ -232,8 +358,17 @@ class DashboardService:
                 "project_version": __version__,
                 "processing_ms": round((perf_counter() - started) * 1000, 3),
                 "financial_logic_location": "python_backend",
+                "data_mode": self.settings.data_mode,
             },
         }
+        run_id = self.store.save_optimization(
+            context.transaction_id,
+            context.customer_id,
+            request.model_dump(mode="json"),
+            result,
+        )
+        result["meta"]["run_id"] = run_id
+        return result
 
     def what_if(self, request: WhatIfRequest) -> dict[str, object]:
         previous = self.optimize(request.base)
@@ -279,6 +414,8 @@ class DashboardService:
         }
 
     def authorize_mock(self, request: MockAuthorizeRequest) -> dict[str, object]:
+        self._ensure_demo_enabled()
+        assert self.mock_provider is not None and self.reserve_service is not None
         recommendation = self.optimize(request.transaction)
         decision = recommendation["decision"]
         assert isinstance(decision, dict)
@@ -317,6 +454,8 @@ class DashboardService:
         }
 
     def dynamic_demo(self, request: DynamicDemoRequest) -> dict[str, object]:
+        self._ensure_demo_enabled()
+        assert self.dynamic_record is not None and self.dynamic_service is not None
         provider = MockReserveProvider(
             MockFailureConfig(fail_next_increase=request.fail_first_increase)
         )
@@ -384,6 +523,7 @@ class DashboardService:
         }
 
     def evidence(self) -> dict[str, object]:
+        self._ensure_demo_enabled()
         try:
             value = json.loads(self.settings.resolved_evidence.read_text(encoding="utf-8"))
         except (OSError, json.JSONDecodeError) as exc:
@@ -402,6 +542,7 @@ class DashboardService:
         return value
 
     def demo_scenarios(self) -> dict[str, object]:
+        self._ensure_demo_enabled()
         return {
             "customer_profiles": [
                 {"id": "cold_start", "label": "Cold Start", "description": "No eligible completed rides; the base model is used."},
@@ -439,7 +580,12 @@ class DashboardService:
     def agent_decide(self, request: AgentDecideRequest) -> dict[str, object]:
         customer_profile = request.customer_profile or request.transaction.customer_profile
         risk_profile_str = request.risk_profile or request.transaction.risk_profile
-        orchestrator = self.orchestrators[customer_profile]
+        orchestrator = (
+            self.production_orchestrator
+            if self.settings.data_mode == "mongodb"
+            else self.orchestrators[customer_profile]
+        )
+        assert orchestrator is not None
         context = self._context(request.transaction)
         policy = RiskProfile(risk_profile_str)
         
@@ -450,14 +596,35 @@ class DashboardService:
         )
         response = orchestrator.run(agent_req)
         response_dict = response.to_dict()
-        self.runs_store[response.run_id] = response_dict
+        self.store.save_agent_run(response.run_id, response_dict)
         return response_dict
 
     def agent_run(self, run_id: str) -> dict[str, object]:
-        if run_id not in self.runs_store:
+        result = self.store.get_agent_run(run_id)
+        if result is None:
             raise DashboardError(
                 "agent_run_not_found",
-                f"Agent run '{run_id}' not found in in-memory session store.",
+                f"Agent run '{run_id}' was not found.",
                 status_code=404,
             )
-        return self.runs_store[run_id]
+        return result
+
+    def optimization_run(self, run_id: str) -> dict[str, object]:
+        result = self.store.get_optimization(run_id)
+        if result is None:
+            raise DashboardError(
+                "optimization_run_not_found",
+                f"Optimization run '{run_id}' was not found.",
+                status_code=404,
+            )
+        return result
+
+    def ingest_completed_ride(self, request: CompletedRideRequest) -> dict[str, object]:
+        if self.settings.data_mode != "mongodb":
+            raise DashboardError(
+                "production_ingest_disabled",
+                "Completed-ride ingestion is available only in MongoDB mode.",
+                status_code=404,
+            )
+        status = self.store.save_completed_ride(request.model_dump(mode="python"))
+        return {"status": status, "transaction_id": request.transaction_id}
