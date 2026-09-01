@@ -15,6 +15,7 @@ from reserve_pay_optimizer.agents.protocol import (
     AgentModel,
     AgentModelAction,
 )
+from reserve_pay_optimizer.personalization.config import MINIMUM_PERSONALIZATION_HISTORY
 
 
 class DeterministicAgentModel(AgentModel):
@@ -72,7 +73,10 @@ class DeterministicAgentModel(AgentModel):
                 reason = "Personalized prediction based on stable completed ride history."
         else:
             reason_code = ReasonCode.COLD_START_BASE_MODEL
-            reason = "Base quantile model used due to insufficient customer history (<5 rides)."
+            reason = (
+                "Base quantile model used because eligible completed history is below "
+                f"the shared minimum of {MINIMUM_PERSONALIZATION_HISTORY} rides."
+            )
 
         final_decision = ReserveAgentDecision(
             transaction_id=state.request.transaction.transaction_id,

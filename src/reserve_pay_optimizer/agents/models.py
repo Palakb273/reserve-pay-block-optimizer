@@ -10,6 +10,7 @@ from typing import Any
 
 from reserve_pay_optimizer.domain.mobility import RideTransactionContext
 from reserve_pay_optimizer.domain.money import Money
+from reserve_pay_optimizer.domain.evaluation import format_ratio
 from reserve_pay_optimizer.policy.risk import RiskProfile
 
 
@@ -94,10 +95,10 @@ class RiskToolOutput:
     def to_dict(self) -> dict[str, Any]:
         return {
             "risk_profile": self.risk_profile,
-            "target_collection_probability": str(self.target_collection_probability),
+            "target_collection_probability": format_ratio(self.target_collection_probability),
             "risk_level": self.risk_level.value,
             "risk_basis": self.risk_basis,
-            "maximum_modeled_probability": str(self.maximum_modeled_probability),
+            "maximum_modeled_probability": format_ratio(self.maximum_modeled_probability),
         }
 
 
@@ -114,12 +115,12 @@ class OptimizationToolOutput:
     def to_dict(self) -> dict[str, Any]:
         return {
             "recommended_block_paise": self.recommended_block.amount_paise,
-            "estimated_collection_probability": str(self.estimated_collection_probability),
-            "estimated_under_block_probability": str(self.estimated_under_block_probability),
+            "estimated_collection_probability": format_ratio(self.estimated_collection_probability),
+            "estimated_under_block_probability": format_ratio(self.estimated_under_block_probability),
             "expected_excess_block_paise": self.expected_excess_block.amount_paise,
-            "objective_score": str(self.objective_score),
+            "objective_score": format_ratio(self.objective_score),
             "objective_components": {
-                key: str(value) for key, value in self.objective_components.items()
+                key: format_ratio(value) for key, value in self.objective_components.items()
             },
             "candidate_count": self.candidate_count,
         }
@@ -194,17 +195,17 @@ class ReserveAgentDecision:
             "transaction_id": self.transaction_id,
             "agent_run_id": self.agent_run_id,
             "recommended_block_paise": self.recommended_block.amount_paise,
-            "estimated_collection_probability": str(self.estimated_collection_probability),
-            "estimated_under_block_probability": str(self.estimated_under_block_probability),
+            "estimated_collection_probability": format_ratio(self.estimated_collection_probability),
+            "estimated_under_block_probability": format_ratio(self.estimated_under_block_probability),
             "risk_profile": self.risk_profile.value,
             "risk": self.risk.value,
             "prediction_mode": self.prediction_mode,
             "history_count": self.history_count,
             "model_version": self.model_version,
-            "objective_score": str(self.objective_score),
+            "objective_score": format_ratio(self.objective_score),
             "reason_code": self.reason_code.value,
             "reason": self.reason,
-            "confidence": str(self.confidence),
+            "confidence": format_ratio(self.confidence),
             "merchant_history_available": self.merchant_history_available,
             "merchant_history": self.merchant_history,
         }

@@ -152,8 +152,9 @@ class AgentToolRegistry:
                 started_at=started_at,
                 completed_at=completed_at,
                 status="failed",
-                error=str(exc),
+                error=getattr(exc, "code", type(exc).__name__),
             )
+            state.tool_calls.append(error_record)
             raise
 
         completed_at = datetime.now(UTC)

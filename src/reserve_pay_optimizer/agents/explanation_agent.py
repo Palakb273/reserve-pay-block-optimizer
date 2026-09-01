@@ -61,6 +61,24 @@ class ExplanationAgent:
                 decision.recommended_block.amount_paise,
                 optimization.recommended_block.amount_paise,
             )
+        if optimization.estimated_collection_probability != decision.estimated_collection_probability:
+            raise DecisionConsistencyError(
+                "estimated_collection_probability",
+                decision.estimated_collection_probability,
+                optimization.estimated_collection_probability,
+            )
+        if optimization.objective_score != decision.objective_score:
+            raise DecisionConsistencyError(
+                "objective_score", decision.objective_score, optimization.objective_score
+            )
+        if optimization.risk_policy.profile != decision.risk_profile:
+            raise DecisionConsistencyError(
+                "risk_profile", decision.risk_profile.value, optimization.risk_policy.profile.value
+            )
+        if prediction.prediction_mode != decision.prediction_mode:
+            raise DecisionConsistencyError(
+                "prediction_mode", decision.prediction_mode, prediction.prediction_mode
+            )
 
         concise = self.explanation_service.explain_reserve_decision(
             context, prediction, optimization, ExplanationLevel.CONCISE

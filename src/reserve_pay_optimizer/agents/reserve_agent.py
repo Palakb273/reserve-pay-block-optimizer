@@ -116,6 +116,20 @@ class ReserveIntelligenceAgent:
                         state.request.risk_profile.value,
                         decision.risk_profile.value,
                     )
+                if decision.objective_score != state.optimization.objective_score:
+                    raise DecisionConsistencyError(
+                        "objective_score",
+                        state.optimization.objective_score,
+                        decision.objective_score,
+                    )
+                if state.prediction is None:
+                    raise DecisionConsistencyError("prediction", "non-null", "null")
+                if decision.prediction_mode != state.prediction.prediction_mode:
+                    raise DecisionConsistencyError(
+                        "prediction_mode",
+                        state.prediction.prediction_mode,
+                        decision.prediction_mode,
+                    )
 
                 state.decision = decision
                 state.status = AgentStateStatus.COMPLETED

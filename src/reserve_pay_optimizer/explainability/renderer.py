@@ -147,8 +147,8 @@ class TemplateExplanationRenderer:
         ]
         if dynamic.authorization_status is AuthorizationStatus.SIMULATED_CONFIRMED:
             lines.append(
-                "That total was confirmed only in simulated/application session state; no payment "
-                "provider was called."
+                "That total was confirmed only in simulated/application session state or by the "
+                "configured mock reserve provider. No external or real payment network was called."
             )
         else:
             lines.append(

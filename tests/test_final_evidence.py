@@ -15,6 +15,7 @@ from reserve_pay_optimizer.cli import main
 from reserve_pay_optimizer.evidence.config import FinalEvidenceConfig
 from reserve_pay_optimizer.evidence.datasets import dataset_fingerprint, generate_dataset
 from reserve_pay_optimizer.evidence.pipeline import validate_final_evidence
+from reserve_pay_optimizer.evidence.fingerprint import evidence_fingerprint
 from reserve_pay_optimizer.evidence.statistics import bootstrap_mean_paise, wilson_ci
 from reserve_pay_optimizer.prediction.config import QUANTILES
 
@@ -77,9 +78,14 @@ class EvidenceStatisticsTests(unittest.TestCase):
 class FinalEvidenceContractTests(unittest.TestCase):
     def _artifact(self, config: FinalEvidenceConfig) -> dict[str, object]:
         metrics = {
-            "exact_estimate": {},
-            "fixed_buffer_20": {},
-            "optimized_balanced": {},
+            key: {
+                "transaction_count": config.transaction_count,
+                "collection_success_rate": "0.900000",
+                "under_block_rate": "0.100000",
+                "capital_efficiency": "0.900000",
+                "average_excess_block_ratio": "0.100000",
+            }
+            for key in ("exact_estimate", "fixed_buffer_20", "optimized_balanced")
         }
         cities = {
             city: {"record_count": 1}
@@ -93,36 +99,73 @@ class FinalEvidenceContractTests(unittest.TestCase):
                 "kolkata",
             )
         }
-        return {
-            "evidence_status": "complete",
-            "provenance": {
-                "configuration": config.to_dict(),
+        artifact = {
+            "metadata": {
+                "evidence_status": "complete",
+                "record_count": config.transaction_count,
                 "dataset_fingerprint_sha256": "a" * 64,
-                "base_model": {"trusted_sources_only": True},
-                "personalized_model": {"trusted_sources_only": True},
+                "evidence_fingerprint_sha256": "",
+                "retraining_performed": False,
+                "evaluation_dataset_used_for_training": False,
+                "base_model": {"trusted_sources_only": True, "model_version": "base-v1"},
+                "personalized_model": {"trusted_sources_only": True, "model_version": "personal-v1"},
             },
-            "strategy_comparison": {
+            "primary_strategy_comparison": {
                 "metrics": metrics,
                 "confidence_intervals_95": {key: {} for key in metrics},
             },
-            "prediction_calibration": {
+            "prediction": {
                 "record_count": config.transaction_count,
-                "quantiles": {f"{value:.2f}": {} for value in QUANTILES},
+                "quantiles": {
+                    f"{value:.2f}": {"observed_coverage": "0.900000"}
+                    for value in QUANTILES
+                },
             },
-            "per_city": cities,
-            "dynamic_reoptimization": {
+            "personalization": {
+                "test_records": config.transaction_count,
+                "minimum_personalization_history": 3,
+                "history_depth": {key: {} for key in ("0-2", "3-5", "6-10", "11+")},
+                "observed_history_segments": {"historically_stable": {}},
+            },
+            "risk_profiles": {
+                "profiles": {key: {} for key in ("aggressive", "balanced", "conservative")},
+                "collapse_diagnostics": {
+                    "record_count": config.transaction_count,
+                    "all_three_same_count": config.transaction_count,
+                    "exactly_two_same_count": 0,
+                    "all_distinct_count": 0,
+                },
+            },
+            "dynamic": {
                 "record_count": config.dynamic_record_count,
+                "benefit_categories": {
+                    "static_failed_dynamic_succeeded": 0,
+                    "both_succeeded": config.dynamic_record_count,
+                    "both_failed": 0,
+                    "static_succeeded_dynamic_failed": 0,
+                },
             },
-            "agent_consistency": {
-                "record_count": config.agent_record_count,
+            "cities": cities,
+            "agents": {
+                "total_records": config.agent_record_count,
+                "failed_runs": 0,
                 "decision_mismatches": 0,
+                "equivalence_rate": "1.000000",
             },
-            "strategies": metrics,
-            "block_distribution": [],
-            "tradeoff_points": [],
-            "personalization": {},
-            "dynamic": {},
+            "explainability": {
+                "record_count": config.agent_record_count,
+                "numeric_consistency_mismatches": 0,
+                "privacy_violations": 0,
+            },
+            "reserve_pay_mock_validation": {
+                "total_scenarios": 11,
+                "passed_scenarios": 11,
+                "failed_scenarios": 0,
+            },
+            "limitations": ["synthetic"] * 5,
         }
+        artifact["metadata"]["evidence_fingerprint_sha256"] = evidence_fingerprint(artifact)
+        return artifact
 
     def test_complete_artifact_contract_accepts_all_required_evidence(self) -> None:
         config = FinalEvidenceConfig()
@@ -131,13 +174,13 @@ class FinalEvidenceContractTests(unittest.TestCase):
     def test_missing_quantile_or_agent_mismatch_fails_closed(self) -> None:
         config = FinalEvidenceConfig()
         artifact = self._artifact(config)
-        calibration = artifact["prediction_calibration"]
+        calibration = artifact["prediction"]
         assert isinstance(calibration, dict) and isinstance(calibration["quantiles"], dict)
         calibration["quantiles"].pop("0.97")
         with self.assertRaisesRegex(ValueError, "quantile"):
             validate_final_evidence(artifact, config)
         artifact = self._artifact(config)
-        agent = artifact["agent_consistency"]
+        agent = artifact["agents"]
         assert isinstance(agent, dict)
         agent["decision_mismatches"] = 1
         with self.assertRaisesRegex(ValueError, "Agent|agent"):
@@ -145,8 +188,6 @@ class FinalEvidenceContractTests(unittest.TestCase):
 
     def test_cli_exposes_authoritative_evidence_workflow(self) -> None:
         artifact = self._artifact(FinalEvidenceConfig())
-        artifact["phase"] = 13
-        artifact["strategy_comparison"] = {"metrics": {}}
         with tempfile.TemporaryDirectory() as temporary, patch(
             "reserve_pay_optimizer.evidence.generate_final_evidence",
             return_value=artifact,
@@ -167,15 +208,14 @@ class FinalEvidenceContractTests(unittest.TestCase):
             (ROOT / "demo/evidence/final_evidence.json").read_text(encoding="utf-8")
         )
         validate_final_evidence(artifact, config)
-        self.assertEqual(artifact["provenance"]["project_version"], "0.14.0")
-        self.assertEqual(artifact["provenance"]["record_count"], 20_000)
-        self.assertEqual(artifact["prediction_calibration"]["record_count"], 20_000)
-        self.assertEqual(artifact["agent_consistency"]["decision_mismatches"], 0)
+        self.assertEqual(artifact["metadata"]["project_version"], "0.14.0")
+        self.assertEqual(artifact["metadata"]["record_count"], 20_000)
+        self.assertEqual(artifact["prediction"]["record_count"], 20_000)
+        self.assertEqual(artifact["agents"]["decision_mismatches"], 0)
         self.assertTrue(
             {
-                "strategies",
-                "block_distribution",
-                "tradeoff_points",
+                "primary_strategy_comparison",
+                "risk_profiles",
                 "personalization",
                 "dynamic",
             }.issubset(artifact)

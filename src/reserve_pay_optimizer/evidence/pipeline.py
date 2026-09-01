@@ -1,10 +1,11 @@
-"""Authoritative Phase-13 evaluation assembled from existing project services."""
+"""Authoritative, fail-closed PRD evidence assembled from production services."""
 
 from __future__ import annotations
 
 from collections import Counter
-from decimal import Decimal
+from decimal import Decimal, ROUND_HALF_UP
 import json
+import math
 from pathlib import Path
 
 from reserve_pay_optimizer import __version__
@@ -16,9 +17,15 @@ from reserve_pay_optimizer.dynamic.service import DynamicRideService
 from reserve_pay_optimizer.dynamic.simulation import simulate_dynamic_transactions
 from reserve_pay_optimizer.evidence.config import FinalEvidenceConfig
 from reserve_pay_optimizer.evidence.datasets import dataset_fingerprint, generate_dataset
+from reserve_pay_optimizer.evidence.errors import EvidenceValidationError
+from reserve_pay_optimizer.evidence.fingerprint import evidence_fingerprint
+from reserve_pay_optimizer.evidence.mock_validation import validate_mock_reserve_pay
+from reserve_pay_optimizer.evidence.reporting import render_evidence_markdown
 from reserve_pay_optimizer.evidence.statistics import bootstrap_mean_paise, wilson_ci
 from reserve_pay_optimizer.optimization.optimizer import ReserveBlockOptimizer
 from reserve_pay_optimizer.personalization.config import MINIMUM_PERSONALIZATION_HISTORY
+from reserve_pay_optimizer.personalization.dataset import build_personalized_records
+from reserve_pay_optimizer.personalization.evaluation import evaluate_personalization
 from reserve_pay_optimizer.personalization.history import InMemoryCustomerHistoryProvider
 from reserve_pay_optimizer.personalization.models import PersonalizedFareDistributionPrediction
 from reserve_pay_optimizer.personalization.persistence import load_personalized_artifact
@@ -27,11 +34,7 @@ from reserve_pay_optimizer.policy.optimizer import PolicyConstrainedOptimizer
 from reserve_pay_optimizer.policy.risk import ReserveRiskPolicy, RiskProfile
 from reserve_pay_optimizer.prediction.config import QUANTILES
 from reserve_pay_optimizer.prediction.dataset import build_prediction_records
-from reserve_pay_optimizer.prediction.distribution import (
-    FareDistributionPrediction,
-    crossing_count,
-    repair_monotonic,
-)
+from reserve_pay_optimizer.prediction.distribution import FareDistributionPrediction, crossing_count, repair_monotonic
 from reserve_pay_optimizer.prediction.evaluation import calculate_prediction_metrics
 from reserve_pay_optimizer.prediction.persistence import load_predictor_artifact
 from reserve_pay_optimizer.services.comparison import compare_strategies
@@ -58,59 +61,35 @@ class _AuditablePersonalizedPredictor:
     @staticmethod
     def _cache_key(context, history) -> tuple[object, ...]:
         return (
-            context.transaction_id,
-            context.estimated_amount.amount_paise,
-            context.city.value,
-            str(context.distance_km),
-            context.estimated_duration_minutes,
-            str(context.surge_multiplier),
-            context.timestamp.isoformat(),
-            history.completed_ride_count,
-            str(history.mean_fare_ratio),
-            str(history.fare_ratio_stddev),
-            str(history.overrun_rate),
+            context.transaction_id, context.estimated_amount.amount_paise,
+            context.city.value, str(context.distance_km), context.estimated_duration_minutes,
+            str(context.surge_multiplier), context.timestamp.isoformat(),
+            history.completed_ride_count, str(history.mean_fare_ratio),
+            str(history.fare_ratio_stddev), str(history.overrun_rate),
             str(history.mean_positive_overrun_ratio),
         )
 
     def predict(self, context) -> PersonalizedFareDistributionPrediction:
         history = self.history_provider.features_for(context)
-        return self.predict_with_history(
-            context,
-            history,
-            history_as_of=context.timestamp,
-        )
+        return self.predict_with_history(context, history, history_as_of=context.timestamp)
 
-    def predict_with_history(
-        self,
-        context,
-        history,
-        *,
-        history_as_of,
-    ) -> PersonalizedFareDistributionPrediction:
+    def predict_with_history(self, context, history, *, history_as_of):
         key = self._cache_key(context, history)
-        cached = self._cache.get(key)
-        if cached is not None:
-            return cached
-        if history.completed_ride_count < MINIMUM_PERSONALIZATION_HISTORY:
-            mode = "base"
-            model = self.base_model
-            raw = model.predict_raw_amounts(context)
-        else:
-            mode = "personalized"
-            model = self.personalized_model
-            raw = model.predict_raw_amounts(context, history)
+        if key in self._cache:
+            return self._cache[key]
+        use_base = history.completed_ride_count < MINIMUM_PERSONALIZATION_HISTORY
+        model = self.base_model if use_base else self.personalized_model
+        raw = model.predict_raw_amounts(context) if use_base else model.predict_raw_amounts(context, history)
         repaired = repair_monotonic(raw)
         distribution = FareDistributionPrediction(
             transaction_id=context.transaction_id,
             model_version=model.model_version,
-            quantiles=tuple(
-                (quantile, Money(repaired[quantile])) for quantile in QUANTILES
-            ),
+            quantiles=tuple((q, Money(repaired[q])) for q in QUANTILES),
             raw_quantile_crossing_detected=crossing_count(raw) > 0,
         )
         prediction = PersonalizedFareDistributionPrediction.from_distribution(
             distribution,
-            prediction_mode=mode,
+            prediction_mode="base" if use_base else "personalized",
             history_features=history,
             history_as_of=history_as_of,
         )
@@ -122,111 +101,65 @@ class _AuditablePersonalizedPredictor:
 
 def _strategy_evaluations(dataset, strategies, optimized_strategy):
     outcomes = {item.transaction_id: item for item in dataset.outcomes}
-    optimized_decisions = {
-        item.transaction_id: item.reserve_decision
-        for item in optimized_strategy.optimization_results
-    }
+    optimized_decisions = {item.transaction_id: item.reserve_decision for item in optimized_strategy.optimization_results}
     values: dict[str, list] = {}
     for strategy in strategies:
-        evaluations = []
+        rows = []
         for transaction in dataset.transactions:
-            decision = (
-                optimized_decisions[transaction.transaction_id]
-                if strategy is optimized_strategy
-                else strategy.calculate_block(transaction)
-            )
-            evaluations.append(
-                evaluate_transaction(
-                    transaction,
-                    decision,
-                    outcomes[transaction.transaction_id],
-                )
-            )
-        values[strategy.strategy_id] = evaluations
+            decision = optimized_decisions[transaction.transaction_id] if strategy is optimized_strategy else strategy.calculate_block(transaction)
+            rows.append(evaluate_transaction(transaction, decision, outcomes[transaction.transaction_id]))
+        values[strategy.strategy_id] = rows
     return values
 
 
-def _strategy_confidence(evaluations, *, seed: int, samples: int) -> dict[str, object]:
+def _strategy_confidence(rows, *, seed: int, samples: int) -> dict[str, object]:
     return {
-        "collection_success_rate": wilson_ci(
-            sum(item.collection_success for item in evaluations), len(evaluations)
-        ),
+        "collection_success_rate": wilson_ci(sum(item.collection_success for item in rows), len(rows)),
         "average_excess_block_paise": bootstrap_mean_paise(
-            tuple(item.excess_block.amount_paise for item in evaluations),
-            seed=seed,
-            samples=samples,
+            tuple(item.excess_block.amount_paise for item in rows), seed=seed, samples=samples
         ),
     }
 
 
-def _per_city(dataset, evaluations_by_strategy) -> dict[str, object]:
-    city_by_transaction = {
-        transaction.transaction_id: transaction.city.value
-        for transaction in dataset.transactions
-    }
-    cities: dict[str, dict[str, object]] = {}
-    for city in sorted(set(city_by_transaction.values())):
-        strategy_metrics = {}
-        for strategy, evaluations in evaluations_by_strategy.items():
-            selected = [
-                item
-                for item in evaluations
-                if city_by_transaction[item.transaction_id] == city
-            ]
-            strategy_metrics[strategy] = aggregate_evaluations(selected).to_dict()
-        optimized_key = next(
-            key for key in strategy_metrics if key.startswith("optimized_")
-        )
-        optimized = strategy_metrics[optimized_key]
-        cities[city] = {
-            "record_count": sum(value == city for value in city_by_transaction.values()),
+def _per_city(dataset, evaluations) -> dict[str, object]:
+    city_by_id = {item.transaction_id: item.city.value for item in dataset.transactions}
+    result: dict[str, object] = {}
+    for city in sorted(set(city_by_id.values())):
+        metrics = {
+            name: aggregate_evaluations(tuple(item for item in rows if city_by_id[item.transaction_id] == city)).to_dict()
+            for name, rows in evaluations.items()
+        }
+        optimized = metrics["optimized_balanced"]
+        result[city] = {
+            "record_count": sum(value == city for value in city_by_id.values()),
             "optimized_collection_success_rate": optimized["collection_success_rate"],
             "optimized_average_excess_block_paise": optimized["average_excess_block_paise"],
-            "strategies": strategy_metrics,
+            "strategies": metrics,
         }
-    return cities
+    return result
 
 
 def _histogram(values: tuple[int, ...], bin_count: int = 14) -> list[dict[str, int]]:
-    lower = min(values)
-    upper = max(values)
+    lower, upper = min(values), max(values)
     width = max(1, (upper - lower + bin_count) // bin_count)
     counts = [0] * bin_count
     for value in values:
         counts[min((value - lower) // width, bin_count - 1)] += 1
-    return [
-        {
-            "lower_paise": lower + index * width,
-            "upper_paise": lower + (index + 1) * width - 1,
-            "count": count,
-        }
-        for index, count in enumerate(counts)
-    ]
+    return [{"lower_paise": lower + i * width, "upper_paise": lower + (i + 1) * width - 1, "count": count} for i, count in enumerate(counts)]
 
 
-def _personalization_proof(
-    base_model, personalized_model, optimizer, policy
-) -> dict[str, object]:
+def _personalization_demo(base_model, personalized_model, optimizer, policy):
     fixture = Path(__file__).resolve().parents[3] / "examples/personalization_comparison.json"
     payload = json.loads(fixture.read_text(encoding="utf-8"), parse_float=Decimal)
     proof: dict[str, object] = {}
     for customer in payload["customers"]:
-        label = customer["label"]
-        profile = "stable_history" if label == "stable_history_customer" else "overrun_prone"
+        key = "stable_history" if customer["label"] == "stable_history_customer" else "overrun_prone"
         context = parse_mobility_transaction(customer["transaction"])
         contexts, outcomes = parse_evaluation_dataset(customer["history"])
-        predictor = PersonalizedFarePredictor(
-            base_model,
-            personalized_model,
-            InMemoryCustomerHistoryProvider(contexts, outcomes),
-        )
+        predictor = PersonalizedFarePredictor(base_model, personalized_model, InMemoryCustomerHistoryProvider(contexts, outcomes))
         prediction = predictor.predict(context)
-        decision = PolicyConstrainedOptimizer(optimizer).optimize(
-            context,
-            prediction,
-            policy,
-        )
-        proof[profile] = {
+        decision = PolicyConstrainedOptimizer(optimizer).optimize(context, prediction, policy)
+        proof[key] = {
             "prediction_mode": prediction.prediction_mode,
             "history_count": prediction.history_count,
             "q97_paise": prediction.amount_for_quantile("0.97").amount_paise,
@@ -236,270 +169,275 @@ def _personalization_proof(
 
 
 def _artifact_metadata(metadata: dict[str, object]) -> dict[str, object]:
-    return {
-        "model_version": metadata["model_version"],
-        "dataset_fingerprint_sha256": metadata["dataset_fingerprint_sha256"],
-        "library_versions": metadata["library_versions"],
-        "trusted_sources_only": metadata["trusted_sources_only"],
+    return {key: metadata[key] for key in ("model_version", "dataset_fingerprint_sha256", "library_versions", "trusted_sources_only")}
+
+
+def _risk_profile_evidence(dataset, predictor, optimizer) -> dict[str, object]:
+    outcomes = {item.transaction_id: item for item in dataset.outcomes}
+    decisions: dict[str, dict[str, int]] = {}
+    profiles: dict[str, object] = {}
+    for profile in (RiskProfile.AGGRESSIVE, RiskProfile.BALANCED, RiskProfile.CONSERVATIVE):
+        policy = ReserveRiskPolicy.for_profile(profile)
+        policy_optimizer = PolicyConstrainedOptimizer(optimizer)
+        rows, blocks = [], []
+        satisfied = 0
+        decisions[profile.value] = {}
+        for transaction in dataset.transactions:
+            result = policy_optimizer.optimize(transaction, predictor.predict(transaction), policy)
+            amount = result.recommended_block.amount_paise
+            blocks.append(amount)
+            decisions[profile.value][transaction.transaction_id] = amount
+            satisfied += int(result.policy_satisfied)
+            rows.append(evaluate_transaction(transaction, result.reserve_decision, outcomes[transaction.transaction_id]))
+        metrics = aggregate_evaluations(rows).to_dict()
+        profiles[profile.value] = {
+            "target_collection_probability": format_ratio(policy.target_collection_probability),
+            "policy_satisfied_count": satisfied,
+            "policy_satisfaction_rate": format_ratio(Decimal(satisfied) / Decimal(len(blocks))),
+            "average_recommended_block_paise": int((Decimal(sum(blocks)) / Decimal(len(blocks))).to_integral_value(rounding=ROUND_HALF_UP)),
+            "realized_minus_target": format_ratio(Decimal(str(metrics["collection_success_rate"])) - policy.target_collection_probability),
+            "metrics": metrics,
+        }
+    all_same = two_same = all_distinct = at_least_two_differ = aggressive_equals_balanced = 0
+    for transaction in dataset.transactions:
+        values = [decisions[name][transaction.transaction_id] for name in ("aggressive", "balanced", "conservative")]
+        unique = len(set(values))
+        all_same += int(unique == 1)
+        two_same += int(unique == 2)
+        all_distinct += int(unique == 3)
+        at_least_two_differ += int(unique > 1)
+        aggressive_equals_balanced += int(values[0] == values[1])
+    count = len(dataset.transactions)
+    collapse = {
+        "record_count": count,
+        "all_three_same_count": all_same, "all_three_same_rate": format_ratio(Decimal(all_same) / Decimal(count)),
+        "exactly_two_same_count": two_same, "exactly_two_same_rate": format_ratio(Decimal(two_same) / Decimal(count)),
+        "all_distinct_count": all_distinct, "all_distinct_rate": format_ratio(Decimal(all_distinct) / Decimal(count)),
+        "at_least_two_profiles_differ_count": at_least_two_differ,
+        "at_least_two_profiles_differ_rate": format_ratio(Decimal(at_least_two_differ) / Decimal(count)),
+        "aggressive_equals_balanced_count": aggressive_equals_balanced,
+        "aggressive_equals_balanced_rate": format_ratio(Decimal(aggressive_equals_balanced) / Decimal(count)),
+        "interpretation": "Profile collapse is measured directly. Frequent identical recommendations mean the unconstrained objective optimum already satisfies multiple policy floors; it is not evidence that the profiles are distinct on every ride.",
     }
+    return {"profiles": profiles, "collapse_diagnostics": collapse}
+
+
+def _atomic_write(output: Path, artifact: dict[str, object]) -> None:
+    summary = output.with_name(f"{output.stem}_summary.md")
+    output.parent.mkdir(parents=True, exist_ok=True)
+    json_temp, summary_temp = output.with_suffix(output.suffix + ".tmp"), summary.with_suffix(summary.suffix + ".tmp")
+    json_temp.write_text(json.dumps(artifact, indent=2, sort_keys=True, allow_nan=False) + "\n", encoding="utf-8")
+    summary_temp.write_text(render_evidence_markdown(artifact), encoding="utf-8")
+    json_temp.replace(output)
+    summary_temp.replace(summary)
 
 
 def generate_final_evidence(config: FinalEvidenceConfig) -> dict[str, object]:
-    """Generate, validate, and persist the complete Phase-13 evidence artifact."""
+    """Generate all required proof, validate it, then atomically publish both artifacts."""
 
-    dataset = generate_dataset(
-        count=config.transaction_count,
-        seed=config.dataset_seed,
-        customer_pool_size=config.customer_pool_size,
-    )
-    if len(dataset.records) != config.transaction_count:
-        raise ValueError("generated evidence dataset count does not match configuration")
+    dataset = generate_dataset(count=config.transaction_count, seed=config.dataset_seed, customer_pool_size=config.customer_pool_size)
     base_artifact = load_predictor_artifact(config.base_model_path)
     personalized_artifact = load_personalized_artifact(config.personalized_model_path)
     history = InMemoryCustomerHistoryProvider(dataset.transactions, dataset.outcomes)
-    predictor = _AuditablePersonalizedPredictor(
-        base_artifact.model,
-        personalized_artifact.model,
-        history,
-    )
+    predictor = _AuditablePersonalizedPredictor(base_artifact.model, personalized_artifact.model, history)
     optimizer = ReserveBlockOptimizer()
     policy = ReserveRiskPolicy.for_profile(RiskProfile(config.primary_risk_profile))
     optimized = OptimizedReserveStrategy(predictor, optimizer, policy)
     strategies = (ExactEstimateStrategy(), FixedBufferStrategy(), optimized)
     comparison = compare_strategies(dataset.transactions, dataset.outcomes, strategies)
-    strategy_metrics = {
-        metric.strategy: metric.to_dict() for metric in comparison.metrics
-    }
+    strategy_metrics = {metric.strategy: metric.to_dict() for metric in comparison.metrics}
     for metric in strategy_metrics.values():
-        metric["average_block_amount_paise"] = (
-            int(metric["total_blocked_amount_paise"])
-            // int(metric["transaction_count"])
-        )
-
-    evaluations_by_strategy = _strategy_evaluations(dataset, strategies, optimized)
-    confidence = {
-        name: _strategy_confidence(
-            evaluations,
-            seed=config.bootstrap_seed + index,
-            samples=config.bootstrap_samples,
-        )
-        for index, (name, evaluations) in enumerate(evaluations_by_strategy.items())
-    }
-
-    prediction_records = build_prediction_records(dataset.transactions, dataset.outcomes)
-    # Populate the cache even if a future strategy implementation becomes lazy.
-    for record in prediction_records:
+        metric["average_block_amount_paise"] = int(metric["total_blocked_amount_paise"]) // int(metric["transaction_count"])
+    evaluations = _strategy_evaluations(dataset, strategies, optimized)
+    confidence = {name: _strategy_confidence(rows, seed=config.bootstrap_seed + index, samples=config.bootstrap_samples) for index, (name, rows) in enumerate(evaluations.items())}
+    records = build_prediction_records(dataset.transactions, dataset.outcomes)
+    for record in records:
         predictor.predict(record.context)
-    prediction_metrics = calculate_prediction_metrics(
-        prediction_records,
-        lambda record: predictor.raw_by_transaction[record.context.transaction_id],
-    )
-    mode_counts = Counter(
-        item.prediction_mode for item in predictor.predictions.values()
-    )
+    prediction_metrics = calculate_prediction_metrics(records, lambda record: predictor.raw_by_transaction[record.context.transaction_id])
+    mode_counts = Counter(item.prediction_mode for item in predictor.predictions.values())
+
+    personalization = evaluate_personalization(
+        personalized_artifact.model,
+        base_artifact.model,
+        build_personalized_records(dataset.transactions, dataset.outcomes),
+    ).to_dict()
+    personalization["same_ride_history_demo"] = _personalization_demo(base_artifact.model, personalized_artifact.model, optimizer, policy)
+    risk_profiles = _risk_profile_evidence(dataset, predictor, optimizer)
 
     dynamic_config = SimulationConfig(
         transaction_count=config.dynamic_record_count,
         seed=config.dynamic_seed,
-        customer_pool_size=min(
-            config.customer_pool_size, max(25, config.dynamic_record_count // 4)
-        ),
+        customer_pool_size=min(config.customer_pool_size, max(25, config.dynamic_record_count // 4)),
         customer_behavior_enabled=True,
     )
     dynamic_dataset = simulate_dynamic_transactions(dynamic_config)
-    dynamic_history = InMemoryCustomerHistoryProvider(
-        dynamic_dataset.transactions, dynamic_dataset.outcomes
-    )
-    dynamic_predictor = _AuditablePersonalizedPredictor(
-        base_artifact.model,
-        personalized_artifact.model,
-        dynamic_history,
-    )
-    dynamic_evidence = evaluate_dynamic_reoptimization(
-        dynamic_dataset,
-        DynamicRideService(dynamic_predictor, optimizer),
-        policy,
-    ).to_dict()
+    dynamic_history = InMemoryCustomerHistoryProvider(dynamic_dataset.transactions, dynamic_dataset.outcomes)
+    dynamic_predictor = _AuditablePersonalizedPredictor(base_artifact.model, personalized_artifact.model, dynamic_history)
+    dynamic = evaluate_dynamic_reoptimization(dynamic_dataset, DynamicRideService(dynamic_predictor, optimizer), policy).to_dict()
+    dynamic["dataset_seed"] = config.dynamic_seed
 
     agent_report = evaluate_agent_orchestration(
-        dataset.transactions[: config.agent_record_count],
-        base_artifact.model,
-        personalized_artifact.model,
-        history,
-        risk_profile=policy.profile,
+        dataset.transactions[:config.agent_record_count], base_artifact.model,
+        personalized_artifact.model, history, risk_profile=policy.profile,
     )
+    agents = agent_report.to_dict()
+    agents["financial_equivalence_required"] = True
+    agents["timing_is_observational"] = True
+    agents["average_execution_time_ms"] = agents.pop("average_duration_ms")
+    agents["median_execution_time_ms"] = agents.pop("median_duration_ms")
+    agents["p95_execution_time_ms"] = agents.pop("p95_duration_ms")
+    explainability = {
+        "record_count": agent_report.explanation_count,
+        "structured_explanation_count": agent_report.explanation_count,
+        "generated_text_count": 0,
+        "fallback_count": 0,
+        "numeric_consistency_mismatches": agent_report.explanation_numeric_mismatches,
+        "privacy_violations": agent_report.explanation_privacy_violations,
+        "renderers": {"deterministic_phase_9": agent_report.explanation_count},
+        "validation": "Structured Phase-9 evidence is re-derived from authoritative prediction and policy services before deterministic rendering.",
+    }
+    mock_validation = validate_mock_reserve_pay(dataset.transactions[0])
 
-    exact = strategy_metrics["exact_estimate"]
-    fixed = strategy_metrics["fixed_buffer_20"]
-    selected = strategy_metrics[f"optimized_{policy.profile.value}"]
-    optimized_blocks = tuple(
-        item.recommended_block.amount_paise
-        for item in optimized.optimization_results
-    )
-    deltas = {
-        "optimized_collection_success_percentage_points_vs_exact": format(
-            (
-                Decimal(str(selected["collection_success_rate"]))
-                - Decimal(str(exact["collection_success_rate"]))
-            )
-            * Decimal(100),
-            ".3f",
-        ),
-        "optimized_average_excess_reduction_paise_vs_fixed_20": (
-            int(fixed["average_excess_block_paise"])
-            - int(selected["average_excess_block_paise"])
-        ),
+    selected, exact, fixed = strategy_metrics["optimized_balanced"], strategy_metrics["exact_estimate"], strategy_metrics["fixed_buffer_20"]
+    optimized_blocks = tuple(item.recommended_block.amount_paise for item in optimized.optimization_results)
+    primary = {
+        "scope": "same_fresh_transactions_and_outcomes",
+        "metrics": strategy_metrics,
+        "confidence_intervals_95": confidence,
+        "deltas": {
+            "optimized_collection_success_percentage_points_vs_exact": format((Decimal(str(selected["collection_success_rate"])) - Decimal(str(exact["collection_success_rate"]))) * Decimal(100), ".3f"),
+            "optimized_average_excess_reduction_paise_vs_fixed_20": int(fixed["average_excess_block_paise"]) - int(selected["average_excess_block_paise"]),
+        },
+        "block_distribution": _histogram(optimized_blocks),
+        "tradeoff_points": [{"strategy": name, "average_excess_block_paise": values["average_excess_block_paise"], "collection_success_rate": values["collection_success_rate"]} for name, values in strategy_metrics.items()],
     }
-    dashboard_deltas = {
-        "collection_success_percentage_points_vs_exact": deltas[
-            "optimized_collection_success_percentage_points_vs_exact"
-        ],
-        "average_excess_reduction_paise_vs_fixed_20": deltas[
-            "optimized_average_excess_reduction_paise_vs_fixed_20"
-        ],
+    prediction = {
+        **prediction_metrics.to_dict(),
+        "prediction_mode_counts": dict(sorted(mode_counts.items())),
+        "interpretation": "Observed coverage is empirical calibration on fresh synthetic data, not a guarantee. High-quantile under-coverage remains visible and requires recalibration before production claims.",
     }
-    per_city = _per_city(dataset, evaluations_by_strategy)
-    personalization = _personalization_proof(
-        base_artifact.model, personalized_artifact.model, optimizer, policy
-    )
     artifact: dict[str, object] = {
-        "evidence_status": "complete",
-        "phase": 13,
-        "provenance": {
-            "project_version": __version__,
-            "dataset": "Synthetic India Mobility",
-            "record_count": config.transaction_count,
-            "seed": config.dataset_seed,
-            "predictor": personalized_artifact.model.model_version,
-            "policy": policy.profile.value,
-            "target_collection_probability": format_ratio(
-                policy.target_collection_probability
-            ),
-            "synthetic_data_disclaimer": (
-                "These results use synthetic city profiles and are not production city statistics."
-            ),
-            "synthetic_data_only": True,
-            "production_data_used": False,
-            "dataset_fingerprint_sha256": dataset_fingerprint(dataset),
-            "configuration": config.to_dict(),
+        "metadata": {
+            "evidence_status": "complete", "project_version": __version__,
+            "dataset": "Synthetic India Mobility", "record_count": config.transaction_count,
+            "dataset_seed": config.dataset_seed, "dataset_fingerprint_sha256": dataset_fingerprint(dataset),
+            "evidence_fingerprint_sha256": "", "configuration": config.to_dict(),
             "base_model": _artifact_metadata(base_artifact.metadata),
             "personalized_model": _artifact_metadata(personalized_artifact.metadata),
-            "evaluation_dataset_used_for_training": False,
-            "retraining_performed": False,
+            "evaluation_dataset_used_for_training": False, "retraining_performed": False,
+            "synthetic_data_only": True, "production_data_used": False,
             "filesystem_paths_in_fingerprint": False,
+            "observational_timing_excluded_from_fingerprint": True,
         },
-        "strategy_comparison": {
-            "scope": "same_fresh_transactions_and_outcomes",
-            "metrics": strategy_metrics,
-            "confidence_intervals_95": confidence,
-            "deltas": deltas,
-        },
-        "prediction_calibration": {
-            **prediction_metrics.to_dict(),
-            "prediction_mode_counts": dict(sorted(mode_counts.items())),
-            "interpretation": (
-                "Observed coverage is empirical calibration on fresh synthetic data, "
-                "not a guarantee for future transactions."
-            ),
-        },
-        "per_city": per_city,
-        "dynamic_reoptimization": {
-            "dataset_seed": config.dynamic_seed,
-            **dynamic_evidence,
-        },
-        "agent_consistency": {
-            "record_count": agent_report.total_records,
-            "successful_runs": agent_report.successful_runs,
-            "decision_mismatches": agent_report.decision_mismatches,
-            "average_tool_calls": agent_report.average_tool_calls,
-            "financial_equivalence_required": True,
-        },
-        # Dashboard-ready aliases keep the UI a pure presenter while the
-        # authoritative nested sections remain explicit and machine-readable.
-        "strategies": strategy_metrics,
-        "deltas": dashboard_deltas,
-        "block_distribution": _histogram(optimized_blocks),
-        "tradeoff_points": [
-            {
-                "strategy": name,
-                "average_excess_block_paise": values["average_excess_block_paise"],
-                "collection_success_rate": values["collection_success_rate"],
-            }
-            for name, values in strategy_metrics.items()
-        ],
+        "primary_strategy_comparison": primary,
+        "prediction": prediction,
         "personalization": personalization,
-        "dynamic": dynamic_evidence,
+        "risk_profiles": risk_profiles,
+        "dynamic": dynamic,
+        "cities": _per_city(dataset, evaluations),
+        "agents": agents,
+        "explainability": explainability,
+        "reserve_pay_mock_validation": mock_validation,
         "limitations": [
-            "All evaluated rides are generated by the deterministic synthetic simulator.",
-            "No Razorpay, merchant, Uber, Ola, or production customer data is used.",
-            "Observed calibration and success rates are empirical estimates, not guarantees.",
-            "Dynamic evaluation assumes recommended mock authorizations succeed.",
-            "Merchant-history personalization is unavailable.",
+            "All evaluated rides are generated by the deterministic synthetic simulator; no production merchant, Razorpay, Uber, Ola, or customer data is used.",
+            "Observed calibration and collection success are empirical estimates, not guarantees.",
+            "Q97 and Q99 under-coverage on this fresh synthetic cohort is material; production use requires recalibration and external validation.",
+            "Dynamic evaluation assumes simulated additional authorizations succeed; the separate mock lifecycle validates execution failure behavior offline.",
+            "Risk-profile recommendations frequently collapse to the same candidate because the objective optimum can satisfy multiple policy floors.",
+            "Agent timing is observational and excluded from the canonical evidence fingerprint.",
+            "The Razorpay network mapping remains intentionally unimplemented without verified Reserve Pay API documentation.",
+            "Merchant-history personalization and persistent production storage are unavailable.",
         ],
     }
+    artifact["metadata"]["evidence_fingerprint_sha256"] = evidence_fingerprint(artifact)  # type: ignore[index]
     validate_final_evidence(artifact, config)
-    config.output_path.parent.mkdir(parents=True, exist_ok=True)
-    config.output_path.write_text(
-        json.dumps(artifact, indent=2, sort_keys=True) + "\n",
-        encoding="utf-8",
-    )
+    _atomic_write(config.output_path, artifact)
     return artifact
 
 
-def validate_final_evidence(
-    artifact: dict[str, object], config: FinalEvidenceConfig
-) -> None:
-    """Fail closed if an authoritative artifact is incomplete or inconsistent."""
+def _require(condition: bool, message: str) -> None:
+    if not condition:
+        raise EvidenceValidationError(message)
 
-    if artifact.get("evidence_status") != "complete":
-        raise ValueError("final evidence status must be complete")
-    provenance = artifact.get("provenance")
-    if not isinstance(provenance, dict):
-        raise ValueError("final evidence requires provenance")
-    configuration = provenance.get("configuration")
-    if not isinstance(configuration, dict) or configuration.get("transaction_count") != config.transaction_count:
-        raise ValueError("final evidence transaction count does not match configuration")
-    if config.transaction_count < 10_000:
-        raise ValueError("authoritative evidence requires at least 10,000 records")
-    fingerprint = provenance.get("dataset_fingerprint_sha256")
-    if not isinstance(fingerprint, str) or len(fingerprint) != 64:
-        raise ValueError("final evidence requires a canonical SHA-256 fingerprint")
+
+def _walk_floats(value: object, path: str = "$"):
+    if isinstance(value, dict):
+        for key, item in value.items():
+            yield from _walk_floats(item, f"{path}.{key}")
+    elif isinstance(value, list):
+        for index, item in enumerate(value):
+            yield from _walk_floats(item, f"{path}[{index}]")
+    elif isinstance(value, float):
+        yield path, value
+
+
+def validate_final_evidence(artifact: dict[str, object], config: FinalEvidenceConfig) -> None:
+    """Reject incomplete, non-finite, inconsistent, or non-reproducible evidence."""
+
+    required = {"metadata", "primary_strategy_comparison", "prediction", "personalization", "risk_profiles", "dynamic", "cities", "agents", "explainability", "reserve_pay_mock_validation", "limitations"}
+    _require(set(artifact) == required, "authoritative evidence top-level schema is incomplete")
+    meta = artifact["metadata"]
+    _require(isinstance(meta, dict), "metadata must be an object")
+    _require(meta.get("evidence_status") == "complete", "evidence status must be complete")
+    _require(meta.get("record_count") == config.transaction_count, "record count is inconsistent")
+    _require(meta.get("retraining_performed") is False, "evidence generation must not retrain models")
+    _require(meta.get("evaluation_dataset_used_for_training") is False, "evaluation data must be fresh")
+    for key in ("dataset_fingerprint_sha256", "evidence_fingerprint_sha256"):
+        _require(isinstance(meta.get(key), str) and len(meta[key]) == 64, f"{key} must be SHA-256")
     for model_key in ("base_model", "personalized_model"):
-        metadata = provenance.get(model_key)
-        if not isinstance(metadata, dict) or not metadata.get("trusted_sources_only"):
-            raise ValueError(f"final evidence requires trusted {model_key} metadata")
-    comparison = artifact.get("strategy_comparison")
-    if not isinstance(comparison, dict) or not isinstance(comparison.get("metrics"), dict):
-        raise ValueError("final evidence requires strategy metrics")
-    required = {"exact_estimate", "fixed_buffer_20", f"optimized_{config.primary_risk_profile}"}
-    if set(comparison["metrics"]) != required:
-        raise ValueError("final evidence strategy set is incomplete")
-    confidence = comparison.get("confidence_intervals_95")
-    if not isinstance(confidence, dict) or set(confidence) != required:
-        raise ValueError("final evidence confidence intervals are incomplete")
-    calibration = artifact.get("prediction_calibration")
-    if not isinstance(calibration, dict) or not isinstance(calibration.get("quantiles"), dict):
-        raise ValueError("final evidence requires quantile calibration")
-    if set(calibration["quantiles"]) != {f"{value:.2f}" for value in QUANTILES}:
-        raise ValueError("final evidence quantile calibration is incomplete")
-    if calibration.get("record_count") != config.transaction_count:
-        raise ValueError("final evidence calibration count is inconsistent")
-    per_city = artifact.get("per_city")
-    expected_cities = {
-        "delhi", "mumbai", "bengaluru", "hyderabad", "pune", "chennai", "kolkata"
-    }
-    if not isinstance(per_city, dict) or set(per_city) != expected_cities:
-        raise ValueError("final evidence per-city diagnostics are incomplete")
-    dynamic = artifact.get("dynamic_reoptimization")
-    if not isinstance(dynamic, dict) or dynamic.get("record_count") != config.dynamic_record_count:
-        raise ValueError("final evidence dynamic cohort is inconsistent")
-    agent = artifact.get("agent_consistency")
-    if not isinstance(agent, dict) or agent.get("decision_mismatches") != 0:
-        raise ValueError("agent decisions must match direct service decisions")
-    if agent.get("record_count") != config.agent_record_count:
-        raise ValueError("final evidence agent cohort is inconsistent")
-    dashboard_keys = {
-        "strategies", "block_distribution", "tradeoff_points", "personalization", "dynamic"
-    }
-    if not dashboard_keys.issubset(artifact):
-        raise ValueError("final evidence dashboard projection is incomplete")
+        model = meta.get(model_key)
+        _require(isinstance(model, dict) and bool(model.get("trusted_sources_only")), f"trusted {model_key} metadata is required")
+        _require(bool(model.get("model_version")), f"{model_key} version is required")
+
+    primary = artifact["primary_strategy_comparison"]
+    _require(isinstance(primary, dict), "primary strategy comparison must be an object")
+    strategy_names = {"exact_estimate", "fixed_buffer_20", "optimized_balanced"}
+    _require(set(primary.get("metrics", {})) == strategy_names, "primary strategy set is incomplete")
+    _require(set(primary.get("confidence_intervals_95", {})) == strategy_names, "confidence intervals are incomplete")
+    for metric in primary["metrics"].values():
+        _require(metric["transaction_count"] == config.transaction_count, "strategy record count is inconsistent")
+        for field in ("collection_success_rate", "under_block_rate", "capital_efficiency", "average_excess_block_ratio"):
+            value = Decimal(str(metric[field]))
+            _require(value.is_finite() and Decimal(0) <= value <= Decimal(1), f"invalid strategy ratio {field}")
+
+    prediction = artifact["prediction"]
+    _require(prediction.get("record_count") == config.transaction_count, "prediction count is inconsistent")
+    _require(set(prediction.get("quantiles", {})) == {f"{q:.2f}" for q in QUANTILES}, "prediction quantiles are incomplete")
+    for quantile in prediction["quantiles"].values():
+        observed = Decimal(quantile["observed_coverage"])
+        _require(observed.is_finite() and Decimal(0) <= observed <= Decimal(1), "invalid observed coverage")
+
+    personalization = artifact["personalization"]
+    _require(personalization.get("test_records") == config.transaction_count, "personalization count is inconsistent")
+    _require(personalization.get("minimum_personalization_history") == MINIMUM_PERSONALIZATION_HISTORY, "personalization threshold is inconsistent")
+    _require(set(personalization.get("history_depth", {})) == {"0-2", "3-5", "6-10", "11+"}, "history-depth evidence is incomplete")
+    _require(bool(personalization.get("observed_history_segments")), "observed segment evidence is required")
+
+    risks = artifact["risk_profiles"]
+    _require(set(risks.get("profiles", {})) == {"aggressive", "balanced", "conservative"}, "risk profiles are incomplete")
+    collapse = risks.get("collapse_diagnostics", {})
+    _require(collapse.get("record_count") == config.transaction_count, "collapse count is inconsistent")
+    _require(collapse.get("all_three_same_count", 0) + collapse.get("exactly_two_same_count", 0) + collapse.get("all_distinct_count", 0) == config.transaction_count, "collapse categories do not account for every record")
+
+    dynamic = artifact["dynamic"]
+    _require(dynamic.get("record_count") == config.dynamic_record_count, "dynamic count is inconsistent")
+    benefit = dynamic.get("benefit_categories", {})
+    _require(sum(benefit.get(key, 0) for key in ("static_failed_dynamic_succeeded", "both_succeeded", "both_failed", "static_succeeded_dynamic_failed")) == config.dynamic_record_count, "dynamic outcome categories are incomplete")
+    _require(set(artifact["cities"]) == {"delhi", "mumbai", "bengaluru", "hyderabad", "pune", "chennai", "kolkata"}, "city evidence is incomplete")
+
+    agents = artifact["agents"]
+    _require(agents.get("total_records") == config.agent_record_count, "agent cohort is inconsistent")
+    _require(agents.get("failed_runs") == 0, "agent execution failures are not allowed")
+    _require(agents.get("decision_mismatches") == 0, "agent/direct decision mismatch detected")
+    _require(Decimal(agents.get("equivalence_rate", "0")) == Decimal(1), "agent equivalence must be 100%")
+    explanations = artifact["explainability"]
+    _require(explanations.get("record_count") == config.agent_record_count, "explanation cohort is inconsistent")
+    _require(explanations.get("numeric_consistency_mismatches") == 0, "explanation numeric mismatch detected")
+    _require(explanations.get("privacy_violations") == 0, "explanation privacy violation detected")
+    mock = artifact["reserve_pay_mock_validation"]
+    _require(mock.get("total_scenarios", 0) >= 11, "mock lifecycle evidence is incomplete")
+    _require(mock.get("failed_scenarios") == 0 and mock.get("passed_scenarios") == mock.get("total_scenarios"), "mock lifecycle validation failed")
+    _require(isinstance(artifact["limitations"], list) and len(artifact["limitations"]) >= 5, "limitations are incomplete")
+    for path, value in _walk_floats(artifact):
+        _require(math.isfinite(value), f"non-finite numeric value at {path}")
+    _require(meta["evidence_fingerprint_sha256"] == evidence_fingerprint(artifact), "evidence fingerprint does not match canonical content")

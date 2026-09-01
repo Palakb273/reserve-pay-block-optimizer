@@ -472,15 +472,15 @@ def main(argv: Sequence[str] | None = None) -> int:
                 output_path=args.output,
             )
             artifact = generate_final_evidence(evidence_config)
-            comparison = artifact["strategy_comparison"]
+            comparison = artifact["primary_strategy_comparison"]
             assert isinstance(comparison, dict)
             result = {
                 "evidence_status": "complete",
-                "phase": 13,
                 "output": str(args.output),
-                "provenance": artifact["provenance"],
+                "summary_output": str(args.output.with_name(f"{args.output.stem}_summary.md")),
+                "metadata": artifact["metadata"],
                 "strategy_metrics": comparison["metrics"],
-                "agent_consistency": artifact["agent_consistency"],
+                "agent_consistency": artifact["agents"],
             }
         elif args.command == "prepare-dashboard-evidence":
             from reserve_pay_optimizer.web.evidence import prepare_dashboard_evidence

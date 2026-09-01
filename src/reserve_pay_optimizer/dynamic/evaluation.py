@@ -79,6 +79,7 @@ class DynamicReoptimizationEvaluation:
     diagnostics: DynamicEvaluationDiagnostics
     policy: ReserveRiskPolicy
     record_count: int
+    benefit_categories: dict[str, int]
     assumption: str = DYNAMIC_EVALUATION_ASSUMPTION
 
     def to_dict(self) -> dict[str, object]:
@@ -94,6 +95,7 @@ class DynamicReoptimizationEvaluation:
             "static": self.static_metrics.to_dict(),
             "dynamic": self.dynamic_metrics.to_dict(),
             "dynamic_diagnostics": self.diagnostics.to_dict(),
+            "benefit_categories": self.benefit_categories,
         }
 
 
@@ -111,6 +113,13 @@ def evaluate_dynamic_reoptimization(
     total_updates = 0
     increase_count = 0
     sufficient_count = 0
+    benefit_categories = {
+        "static_failed_dynamic_succeeded": 0,
+        "both_succeeded": 0,
+        "both_failed": 0,
+        "static_succeeded_dynamic_failed": 0,
+        "dynamic_no_increase_required": 0,
+    }
     for record in dataset.records:
         session = service.start_dynamic_session(record.initial_transaction, policy)
         initial = session.initial_authorized_block
@@ -120,9 +129,10 @@ def evaluate_dynamic_reoptimization(
             strategy_version="1",
             block_amount=initial,
         )
-        static_evaluations.append(
-            evaluate_transaction(record.initial_transaction, static_decision, record.outcome)
+        static_evaluation = evaluate_transaction(
+            record.initial_transaction, static_decision, record.outcome
         )
+        static_evaluations.append(static_evaluation)
         for update in record.updates:
             application = service.apply_context_update(session, update)
             session = application.session
@@ -144,15 +154,26 @@ def evaluate_dynamic_reoptimization(
         initial_blocks.append(initial.amount_paise)
         final_blocks.append(final.amount_paise)
         ride_additions.append(final.amount_paise - initial.amount_paise)
+        if final.amount_paise == initial.amount_paise:
+            benefit_categories["dynamic_no_increase_required"] += 1
         dynamic_decision = ReserveDecision(
             transaction_id=record.initial_transaction.transaction_id,
             strategy="dynamic_personalized_reoptimization",
             strategy_version="1",
             block_amount=final,
         )
-        dynamic_evaluations.append(
-            evaluate_transaction(record.initial_transaction, dynamic_decision, record.outcome)
+        dynamic_evaluation = evaluate_transaction(
+            record.initial_transaction, dynamic_decision, record.outcome
         )
+        dynamic_evaluations.append(dynamic_evaluation)
+        if static_evaluation.collection_success and dynamic_evaluation.collection_success:
+            benefit_categories["both_succeeded"] += 1
+        elif not static_evaluation.collection_success and dynamic_evaluation.collection_success:
+            benefit_categories["static_failed_dynamic_succeeded"] += 1
+        elif static_evaluation.collection_success and not dynamic_evaluation.collection_success:
+            benefit_categories["static_succeeded_dynamic_failed"] += 1
+        else:
+            benefit_categories["both_failed"] += 1
 
     count = len(dataset.records)
     triggered = [value for value in ride_additions if value > 0]
@@ -180,4 +201,5 @@ def evaluate_dynamic_reoptimization(
         diagnostics=diagnostics,
         policy=policy,
         record_count=count,
+        benefit_categories=benefit_categories,
     )
