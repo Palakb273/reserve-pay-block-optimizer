@@ -199,7 +199,12 @@ class FinalEvidenceContractTests(unittest.TestCase):
                 "personalized_percentage": "0.000000",
                 "base_predictor": predictor_metrics,
                 "personalized_predictor": predictor_metrics,
-                "comparison": {},
+                "comparison": {
+                    "base_q97_coverage": "0.800000",
+                    "base_q99_coverage": "0.850000",
+                    "personalized_q97_coverage": "0.900000",
+                    "personalized_q99_coverage": "0.950000",
+                },
                 "history_depth": {key: {} for key in ("0-2", "3-5", "6-10", "11+")},
                 "observed_history_segments": {"historically_stable": {}},
                 "downstream_balanced_policy": {},
@@ -341,22 +346,11 @@ class FinalEvidenceContractTests(unittest.TestCase):
     def test_markdown_summary_is_rendered_from_authoritative_fields(self) -> None:
         artifact = self._artifact(FinalEvidenceConfig())
         artifact["metadata"].update({"project_version": "0.14.0", "dataset": "Synthetic", "dataset_seed": 1})
-        artifact["primary_strategy_comparison"].setdefault("deltas", {})
-        artifact["prediction"].update({"mean_pinball_loss_paise": "1.000000"})
-        for key, value in artifact["prediction"]["quantiles"].items():
-            value.update({"target_coverage": key, "calibration_error": "0.000000"})
-        artifact["risk_profiles"]["profiles"] = {
-            key: {"target_collection_probability": "0.970000", "metrics": {"collection_success_rate": "0.900000"}, "average_recommended_block_paise": 100}
-            for key in ("aggressive", "balanced", "conservative")
-        }
-        artifact["risk_profiles"]["collapse_analysis"].update({"all_three_same_rate": "1.000000"})
-        artifact["personalization"].update({"test_records": 20000})
-        artifact["dynamic"].update({"static": {"collection_success_rate": "0.9"}, "dynamic": {"collection_success_rate": "0.95"}})
-        artifact["agents"].update({"successful_runs": 500})
-        artifact["explainability"].update({"explanations_generated": 500, "structured_valid_count": 500, "structured_valid_rate": "1.000000", "template_fallbacks": 0, "generated_text_failures": 0})
+        artifact["primary_strategy_comparison"]["metrics"]["exact_estimate"]["collection_success_rate"] = "0.812345"
         text = render_evidence_markdown(artifact)
-        self.assertIn("Final PRD Evidence Summary", text)
+        self.assertIn("Reserve Pay Block Optimizer — Final Evidence", text)
         self.assertIn("20000", text)
+        self.assertIn("0.812345", text)
 
     def test_mock_lifecycle_validation_runs_offline(self) -> None:
         context = generate_dataset(count=1, seed=7, customer_pool_size=1).transactions[0]

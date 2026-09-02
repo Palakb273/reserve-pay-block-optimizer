@@ -1,7 +1,8 @@
 {
   "agents": {
-    "average_execution_time_ms": 19.182,
+    "average_execution_time_ms": 18.064,
     "average_tool_calls": 4.0,
+    "decision_equivalence_rate": "1.000000",
     "decision_mismatches": 0,
     "equivalence_rate": "1.000000",
     "explanation_count": 500,
@@ -9,9 +10,9 @@
     "explanation_privacy_violations": 0,
     "failed_runs": 0,
     "financial_equivalence_required": true,
-    "median_execution_time_ms": 18.525,
+    "median_execution_time_ms": 17.86,
     "mismatch_details": [],
-    "p95_execution_time_ms": 23.107,
+    "p95_execution_time_ms": 20.12,
     "runs": 500,
     "step_limit_failures": 0,
     "successful_runs": 500,
@@ -484,8 +485,8 @@
     "dynamic_record_count": 5000,
     "dynamic_seed": 202714,
     "evaluation_dataset_used_for_training": false,
-    "evidence_fingerprint": "e43ac84651cc8e3f36e1c060b7cfd34a3a6640d268911ec4f5c51e99a20fcef9",
-    "evidence_fingerprint_sha256": "e43ac84651cc8e3f36e1c060b7cfd34a3a6640d268911ec4f5c51e99a20fcef9",
+    "evidence_fingerprint": "619559aa9352e2f2d9718260eec44b4f7f71d4b99759c18110f7b1ccf091a05c",
+    "evidence_fingerprint_sha256": "619559aa9352e2f2d9718260eec44b4f7f71d4b99759c18110f7b1ccf091a05c",
     "evidence_status": "complete",
     "filesystem_paths_in_fingerprint": false,
     "models_retrained": false,
@@ -3331,7 +3332,7 @@
   "reserve_pay_mock_validation": {
     "failed_scenarios": 0,
     "network_calls_made": false,
-    "passed_scenarios": 14,
+    "passed_scenarios": 15,
     "provider": "mock",
     "scenarios": [
       {
@@ -3417,15 +3418,28 @@
       {
         "details": {
           "debited_amount_paise": 79500,
-          "released_amount_paise": 20500
+          "settlement_status": "settled"
         },
-        "expected_state": "actual fare debited and remainder released",
+        "expected_state": "actual fare fully debited within authorization",
         "observed_state": {
           "debited_amount_paise": 79500,
+          "settlement_status": "settled"
+        },
+        "passed": true,
+        "scenario": "full_settlement"
+      },
+      {
+        "details": {
+          "final_status": "released",
+          "released_amount_paise": 20500
+        },
+        "expected_state": "unused remaining authorization released",
+        "observed_state": {
+          "final_status": "released",
           "released_amount_paise": 20500
         },
         "passed": true,
-        "scenario": "settlement_debit_and_release"
+        "scenario": "release_remaining_amount"
       },
       {
         "details": {
@@ -3517,7 +3531,7 @@
         "scenario": "stale_success_reconciliation_visible"
       }
     ],
-    "total_scenarios": 14
+    "total_scenarios": 15
   },
   "risk_profiles": {
     "collapse_analysis": {
