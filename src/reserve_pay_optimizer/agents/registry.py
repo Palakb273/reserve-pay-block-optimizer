@@ -40,6 +40,88 @@ def _compute_fingerprint(data: dict[str, Any]) -> str:
     return sha256(serialized.encode("utf-8")).hexdigest()
 
 
+def _bounded_identifier(tool_name: str, field: str, value: object) -> str:
+    if not isinstance(value, str) or not value.strip() or len(value) > 100:
+        raise InvalidToolArgumentsError(
+            tool_name,
+            f"{field} must be a non-empty string of at most 100 characters",
+            {field: value},
+        )
+    return value
+
+
+def _validated_arguments(
+    tool_name: str,
+    arguments: dict[str, Any],
+    state: ReserveAgentState,
+) -> dict[str, Any]:
+    """Return only the bounded arguments required by each allowlisted tool."""
+
+    allowed = {
+        "get_customer_history": frozenset({"customer_id"}),
+        "get_transaction_prediction": frozenset({"transaction_id"}),
+        "calculate_risk": frozenset({"risk_profile"}),
+        "optimize_block": frozenset({"risk_profile"}),
+        "get_merchant_history": frozenset({"merchant_id"}),
+    }[tool_name]
+    unexpected = set(arguments) - allowed
+    if unexpected:
+        raise InvalidToolArgumentsError(
+            tool_name,
+            f"unexpected argument names: {', '.join(sorted(unexpected))}",
+            arguments,
+        )
+
+    if tool_name == "get_customer_history":
+        expected = state.request.transaction.customer_id
+        customer_id = _bounded_identifier(
+            tool_name, "customer_id", arguments.get("customer_id", expected)
+        )
+        if customer_id != expected:
+            raise InvalidToolArgumentsError(
+                tool_name, "customer_id must match the current transaction", arguments
+            )
+        return {"customer_id": customer_id}
+
+    if tool_name == "get_transaction_prediction":
+        expected = state.request.transaction.transaction_id
+        transaction_id = _bounded_identifier(
+            tool_name, "transaction_id", arguments.get("transaction_id", expected)
+        )
+        if transaction_id != expected:
+            raise InvalidToolArgumentsError(
+                tool_name,
+                "transaction_id must match the current transaction",
+                arguments,
+            )
+        return {"transaction_id": transaction_id}
+
+    if tool_name in {"calculate_risk", "optimize_block"}:
+        risk_profile = arguments.get(
+            "risk_profile", state.request.risk_profile.value
+        )
+        if not isinstance(risk_profile, str):
+            raise InvalidToolArgumentsError(
+                tool_name, "risk_profile must be a string", arguments
+            )
+        try:
+            normalized_profile = RiskProfile(risk_profile).value
+        except ValueError as exc:
+            raise InvalidToolArgumentsError(
+                tool_name, "risk_profile is not supported", arguments
+            ) from exc
+        return {"risk_profile": normalized_profile}
+
+    merchant_id = arguments.get("merchant_id")
+    if merchant_id is None:
+        return {}
+    return {
+        "merchant_id": _bounded_identifier(
+            tool_name, "merchant_id", merchant_id
+        )
+    }
+
+
 class AgentToolRegistry:
     """Central tool registry enforcing allowlist access, strict typing, and audit tracking."""
 
@@ -77,6 +159,7 @@ class AgentToolRegistry:
         if tool_name not in self.APPROVED_TOOLS:
             raise UnknownToolError(tool_name)
 
+        arguments = _validated_arguments(tool_name, arguments, state)
         started_at = datetime.now(UTC)
         input_fingerprint = _compute_fingerprint(arguments)
 

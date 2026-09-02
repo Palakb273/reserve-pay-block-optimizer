@@ -386,35 +386,50 @@ class ReservePayService:
                 GetBlockStatusRequest(block_id, outcome.transaction_id)
             ).block
             available = status.remaining_amount.amount_paise
-            actual = outcome.actual_amount.amount_paise
-            if actual > available:
+            final_amount = outcome.actual_amount.amount_paise
+            already_debited = status.debited_amount.amount_paise
+            outstanding_due = max(final_amount - already_debited, 0)
+            overpaid_amount = max(already_debited - final_amount, 0)
+            zero = Money.from_non_negative_paise(0)
+
+            if outstanding_due > available:
                 return SettlementResult(
                     transaction_id=outcome.transaction_id,
                     block_id=block_id,
                     authorized_amount=status.authorized_amount,
                     final_amount=outcome.actual_amount,
+                    already_debited_before_settlement=status.debited_amount,
+                    outstanding_due=Money.from_non_negative_paise(outstanding_due),
+                    newly_debited=zero,
                     debited_amount=status.debited_amount,
                     released_amount=status.released_amount,
-                    shortfall=Money.from_non_negative_paise(actual - available),
+                    shortfall=Money.from_non_negative_paise(
+                        outstanding_due - available
+                    ),
+                    overpaid_amount=zero,
                     status=SettlementStatus.INSUFFICIENT_RESERVED_FUNDS,
                     provider=status.provider,
                     final_block=status,
                 )
-            debit = self.debit_block(
-                DebitBlockRequest(
-                    block_id=block_id,
-                    transaction_id=outcome.transaction_id,
-                    amount=outcome.actual_amount,
-                    idempotency_key=f"{idempotency_key}:debit",
-                )
-            ).block
-            final_block = debit
-            if debit.remaining_amount.amount_paise > 0:
+
+            final_block = status
+            newly_debited = zero
+            if outstanding_due > 0:
+                newly_debited = Money(outstanding_due)
+                final_block = self.debit_block(
+                    DebitBlockRequest(
+                        block_id=block_id,
+                        transaction_id=outcome.transaction_id,
+                        amount=newly_debited,
+                        idempotency_key=f"{idempotency_key}:debit",
+                    )
+                ).block
+            if final_block.remaining_amount.amount_paise > 0:
                 final_block = self.release_block(
                     ReleaseBlockRequest(
                         block_id=block_id,
                         transaction_id=outcome.transaction_id,
-                        amount=debit.remaining_amount,
+                        amount=final_block.remaining_amount,
                         idempotency_key=f"{idempotency_key}:release",
                     )
                 ).block
@@ -423,10 +438,18 @@ class ReservePayService:
                 block_id=block_id,
                 authorized_amount=final_block.authorized_amount,
                 final_amount=outcome.actual_amount,
+                already_debited_before_settlement=status.debited_amount,
+                outstanding_due=Money.from_non_negative_paise(outstanding_due),
+                newly_debited=newly_debited,
                 debited_amount=final_block.debited_amount,
                 released_amount=final_block.released_amount,
-                shortfall=Money.from_non_negative_paise(0),
-                status=SettlementStatus.SETTLED,
+                shortfall=zero,
+                overpaid_amount=Money.from_non_negative_paise(overpaid_amount),
+                status=(
+                    SettlementStatus.OVERPAID_RECONCILIATION_REQUIRED
+                    if overpaid_amount > 0
+                    else SettlementStatus.SETTLED
+                ),
                 provider=final_block.provider,
                 final_block=final_block,
             )

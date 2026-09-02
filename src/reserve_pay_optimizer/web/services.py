@@ -11,6 +11,7 @@ from time import perf_counter
 from typing import Any, Literal
 
 from reserve_pay_optimizer import __version__
+from reserve_pay_optimizer.config import MAX_MOBILITY_DURATION_MINUTES
 from reserve_pay_optimizer.dynamic.serialization import parse_dynamic_scenario
 from reserve_pay_optimizer.dynamic.service import DynamicRideService
 from reserve_pay_optimizer.explainability.models import ExplanationLevel
@@ -380,10 +381,25 @@ class DashboardService:
                     rounding=ROUND_HALF_UP
                 )
             )
+            if overrides["estimated_duration_minutes"] > MAX_MOBILITY_DURATION_MINUTES:
+                raise DashboardError(
+                    "invalid_what_if_override",
+                    "The projected ride duration exceeds the supported maximum.",
+                    status_code=422,
+                    details=[
+                        {
+                            "field": "overrides.traffic_level",
+                            "code": "projected_duration_out_of_range",
+                        }
+                    ],
+                )
         else:
             overrides.pop("traffic_level", None)
         revised_request = request.base.model_copy(
-            update={**overrides, "transaction_id": f"{request.base.transaction_id}-WHATIF"}
+            update={
+                **overrides,
+                "transaction_id": f"{request.base.transaction_id}-WHATIF",
+            }
         )
         revised = self.optimize(revised_request)
         previous_decision = previous["decision"]

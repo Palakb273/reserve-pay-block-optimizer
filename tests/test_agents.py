@@ -129,11 +129,53 @@ class AgentLayerTests(unittest.TestCase):
         req = ReserveAgentRequest(transaction=self._sample_context())
         state = ReserveAgentState(request=req, agent_run_id="RUN-TEST-001")
 
-        with self.assertRaises(UnknownToolError):
-            registry.execute_tool("arbitrary_python_eval", {}, state)
+        forbidden_tools = (
+            "create_block",
+            "increase_block",
+            "debit_block",
+            "release_block",
+            "shell",
+            "read_file",
+            "execute_python",
+            "http_request",
+        )
+        for tool_name in forbidden_tools:
+            with self.subTest(tool_name=tool_name), self.assertRaises(UnknownToolError):
+                registry.execute_tool(tool_name, {}, state)
 
-        with self.assertRaises(UnknownToolError):
-            registry.execute_tool("debit_reserve_funds", {}, state)
+    def test_tool_arguments_are_bounded_allowlisted_and_redacted(self) -> None:
+        registry = AgentToolRegistry(
+            base_model=self.base_artifact.model,
+            personalized_model=self.personalized_artifact.model,
+            history_provider=self.history_provider,
+        )
+        req = ReserveAgentRequest(transaction=self._sample_context())
+        state = ReserveAgentState(request=req, agent_run_id="RUN-ARGS-001")
+
+        result, audit = registry.execute_tool(
+            "get_customer_history",
+            {"customer_id": req.transaction.customer_id},
+            state,
+        )
+        self.assertEqual(result.customer_id, req.transaction.customer_id)
+        self.assertEqual(audit.arguments, {"customer_id": req.transaction.customer_id})
+
+        secret_value = "must-not-appear-in-error"
+        with self.assertRaises(InvalidToolArgumentsError) as caught:
+            registry.execute_tool(
+                "get_customer_history",
+                {"customer_id": req.transaction.customer_id, "secret": secret_value},
+                state,
+            )
+        self.assertNotIn(secret_value, str(caught.exception.to_dict()))
+        self.assertEqual(
+            caught.exception.details["argument_names"], ["customer_id", "secret"]
+        )
+
+        with self.assertRaises(InvalidToolArgumentsError):
+            registry.execute_tool(
+                "get_customer_history", {"customer_id": "ANOTHER-CUSTOMER"}, state
+            )
 
     def test_tool_order_dependencies_enforced(self) -> None:
         registry = AgentToolRegistry(

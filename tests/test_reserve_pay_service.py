@@ -116,9 +116,95 @@ class ReservePayServiceTests(unittest.TestCase):
         )
         self.assertIs(result, replay)
         self.assertEqual(result.status, SettlementStatus.SETTLED)
+        self.assertEqual(result.already_debited_before_settlement.amount_paise, 0)
+        self.assertEqual(result.outstanding_due.amount_paise, 79_500)
+        self.assertEqual(result.newly_debited.amount_paise, 79_500)
         self.assertEqual(result.debited_amount.amount_paise, 79_500)
         self.assertEqual(result.released_amount.amount_paise, 20_500)
+        self.assertEqual(result.overpaid_amount.amount_paise, 0)
         self.assertEqual(result.final_block.status, ReserveBlockStatus.RELEASED)
+
+    def test_settlement_after_partial_debit_collects_only_outstanding_due(self):
+        provider = MockReserveProvider()
+        service = ReservePayService(provider)
+        block = self.authorize(service).block
+        service.debit_block(
+            DebitBlockRequest(
+                block.block_id, "TXN-S", Money(20_000), "partial-before-settlement"
+            )
+        )
+        ride_outcome = RideTransactionOutcome(
+            "TXN-S", Money(70_000), context().timestamp + timedelta(minutes=80)
+        )
+
+        result = service.settle_completed_transaction(
+            ride_outcome, block_id=block.block_id, idempotency_key="settle-partial"
+        )
+        replay = service.settle_completed_transaction(
+            ride_outcome, block_id=block.block_id, idempotency_key="settle-partial"
+        )
+
+        self.assertIs(result, replay)
+        self.assertEqual(result.already_debited_before_settlement.amount_paise, 20_000)
+        self.assertEqual(result.outstanding_due.amount_paise, 50_000)
+        self.assertEqual(result.newly_debited.amount_paise, 50_000)
+        self.assertEqual(result.debited_amount.amount_paise, 70_000)
+        self.assertEqual(result.released_amount.amount_paise, 30_000)
+        self.assertEqual(result.shortfall.amount_paise, 0)
+        self.assertEqual(result.status, SettlementStatus.SETTLED)
+        self.assertEqual(result.final_block.status, ReserveBlockStatus.RELEASED)
+        self.assertEqual(
+            result.debited_amount.amount_paise
+            + result.released_amount.amount_paise
+            + result.final_block.remaining_amount.amount_paise,
+            result.authorized_amount.amount_paise,
+        )
+        self.assertLessEqual(
+            result.debited_amount.amount_paise, result.final_amount.amount_paise
+        )
+
+    def test_settlement_when_already_fully_paid_skips_debit_and_releases(self):
+        provider = MockReserveProvider()
+        service = ReservePayService(provider)
+        block = self.authorize(service).block
+        service.debit_block(
+            DebitBlockRequest(block.block_id, "TXN-S", Money(70_000), "paid-before")
+        )
+        result = service.settle_completed_transaction(
+            RideTransactionOutcome(
+                "TXN-S", Money(70_000), context().timestamp + timedelta(minutes=80)
+            ),
+            block_id=block.block_id,
+            idempotency_key="settle-paid",
+        )
+        self.assertEqual(result.outstanding_due.amount_paise, 0)
+        self.assertEqual(result.newly_debited.amount_paise, 0)
+        self.assertEqual(result.debited_amount.amount_paise, 70_000)
+        self.assertEqual(result.released_amount.amount_paise, 30_000)
+        self.assertEqual(result.status, SettlementStatus.SETTLED)
+
+    def test_historical_overpayment_is_visible_and_not_debited_or_refunded(self):
+        provider = MockReserveProvider()
+        service = ReservePayService(provider)
+        block = self.authorize(service).block
+        service.debit_block(
+            DebitBlockRequest(block.block_id, "TXN-S", Money(75_000), "overpaid-before")
+        )
+        result = service.settle_completed_transaction(
+            RideTransactionOutcome(
+                "TXN-S", Money(70_000), context().timestamp + timedelta(minutes=80)
+            ),
+            block_id=block.block_id,
+            idempotency_key="settle-overpaid",
+        )
+        self.assertEqual(result.outstanding_due.amount_paise, 0)
+        self.assertEqual(result.newly_debited.amount_paise, 0)
+        self.assertEqual(result.debited_amount.amount_paise, 75_000)
+        self.assertEqual(result.released_amount.amount_paise, 25_000)
+        self.assertEqual(result.overpaid_amount.amount_paise, 5_000)
+        self.assertEqual(
+            result.status, SettlementStatus.OVERPAID_RECONCILIATION_REQUIRED
+        )
 
     def test_under_block_settlement_reports_shortfall_and_does_not_debit(self):
         provider = MockReserveProvider()
@@ -137,6 +223,29 @@ class ReservePayServiceTests(unittest.TestCase):
             GetBlockStatusRequest(block.block_id, "TXN-S")
         ).block
         self.assertEqual(current.status, ReserveBlockStatus.AUTHORIZED)
+
+    def test_shortfall_after_partial_debit_uses_only_outstanding_due(self):
+        provider = MockReserveProvider()
+        service = ReservePayService(provider)
+        block = self.authorize(service, 70_000).block
+        service.debit_block(
+            DebitBlockRequest(block.block_id, "TXN-S", Money(20_000), "short-prior")
+        )
+        result = service.settle_completed_transaction(
+            RideTransactionOutcome(
+                "TXN-S", Money(79_500), context().timestamp + timedelta(minutes=80)
+            ),
+            block_id=block.block_id,
+            idempotency_key="settle-short-partial",
+        )
+        self.assertEqual(result.outstanding_due.amount_paise, 59_500)
+        self.assertEqual(result.newly_debited.amount_paise, 0)
+        self.assertEqual(result.debited_amount.amount_paise, 20_000)
+        self.assertEqual(result.shortfall.amount_paise, 9_500)
+        self.assertEqual(
+            result.status, SettlementStatus.INSUFFICIENT_RESERVED_FUNDS
+        )
+        self.assertEqual(result.final_block.remaining_amount.amount_paise, 50_000)
 
     def test_outcome_enters_only_the_settlement_method(self):
         forbidden = {

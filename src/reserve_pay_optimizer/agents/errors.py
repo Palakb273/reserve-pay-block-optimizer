@@ -41,7 +41,13 @@ class InvalidToolArgumentsError(AgentError):
         super().__init__(
             code="invalid_tool_arguments",
             message=f"Invalid arguments for tool '{tool_name}': {reason}",
-            details={"tool_name": tool_name, "reason": reason, "arguments": invalid_arguments or {}},
+            details={
+                "tool_name": tool_name,
+                "reason": reason,
+                # Names are sufficient for diagnosis; values may contain
+                # untrusted or secret material supplied by a future model.
+                "argument_names": sorted((invalid_arguments or {}).keys()),
+            },
         )
 
 

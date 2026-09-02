@@ -5,11 +5,19 @@ from __future__ import annotations
 from pathlib import Path
 import json
 import unittest
+from unittest.mock import patch
 
 from fastapi.testclient import TestClient
 
+from reserve_pay_optimizer.config import (
+    MAX_AMOUNT_PAISE,
+    MAX_MOBILITY_DISTANCE_KM,
+    MAX_MOBILITY_DURATION_MINUTES,
+    MAX_MOBILITY_SURGE_MULTIPLIER,
+)
 from reserve_pay_optimizer.web.app import create_app
-from reserve_pay_optimizer.web.services import DashboardSettings
+from reserve_pay_optimizer.web.services import DashboardService, DashboardSettings
+from reserve_pay_optimizer.web.storage import InMemoryApplicationStore
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -175,6 +183,111 @@ class DashboardApiTests(unittest.TestCase):
         body = response.json()
         self.assertEqual(body["error"]["code"], "invalid_request")
         self.assertTrue(body["error"]["details"])
+
+    def test_financial_paise_fields_require_actual_json_integers(self) -> None:
+        for invalid in (True, False, "65000", 65_000.5):
+            with self.subTest(value=invalid):
+                response = self.client.post(
+                    "/api/optimize",
+                    json=self._request(estimated_amount_paise=invalid),
+                )
+                self.assertEqual(response.status_code, 422)
+                self.assertEqual(response.json()["error"]["code"], "invalid_request")
+
+        accepted = self.client.post(
+            "/api/optimize", json=self._request(estimated_amount_paise=65_000)
+        )
+        self.assertEqual(accepted.status_code, 200)
+
+        oversized = self.client.post(
+            "/api/optimize",
+            json=self._request(estimated_amount_paise=MAX_AMOUNT_PAISE + 1),
+        )
+        self.assertEqual(oversized.status_code, 422)
+
+    def test_extreme_ride_numbers_are_structured_validation_errors(self) -> None:
+        cases = {
+            "distance_km": str(MAX_MOBILITY_DISTANCE_KM + 1),
+            "estimated_duration_minutes": MAX_MOBILITY_DURATION_MINUTES + 1,
+            "surge_multiplier": str(MAX_MOBILITY_SURGE_MULTIPLIER + 1),
+        }
+        for field, value in cases.items():
+            with self.subTest(field=field):
+                response = self.client.post(
+                    "/api/optimize", json=self._request(**{field: value})
+                )
+                self.assertEqual(response.status_code, 422)
+                body = response.json()
+                self.assertEqual(body["error"]["code"], "invalid_request")
+                self.assertNotIn("Traceback", response.text)
+
+    def test_ingestion_key_accepts_valid_rejects_invalid_and_never_leaks(self) -> None:
+        secret = "security-test-ingestion-key-1234567890"
+        settings = DashboardSettings(
+            repository_root=ROOT,
+            data_mode="mongodb",
+            mongodb_uri="unused-with-in-memory-test-store",
+            ingest_api_key=secret,
+        )
+        service = DashboardService(settings, store=InMemoryApplicationStore())
+        ride = {
+            "transaction_id": "SECURITY-INGEST-001",
+            "customer_id": "C-SECURITY-001",
+            "estimated_amount_paise": 65_000,
+            "actual_amount_paise": 70_000,
+            "city": "hyderabad",
+            "distance_km": "18.4",
+            "estimated_duration_minutes": 42,
+            "surge_multiplier": "1.18",
+            "timestamp": "2027-01-15T18:30:00+05:30",
+            "completed_at": "2027-01-15T19:30:00+05:30",
+        }
+        with patch(
+            "reserve_pay_optimizer.web.app.DashboardService", return_value=service
+        ):
+            with TestClient(create_app(settings)) as client:
+                invalid = client.post(
+                    "/api/rides/completed",
+                    headers={"X-API-Key": "incorrect"},
+                    json=ride,
+                )
+                boolean_actual = client.post(
+                    "/api/rides/completed",
+                    headers={"X-API-Key": secret},
+                    json={**ride, "actual_amount_paise": True},
+                )
+                string_estimate = client.post(
+                    "/api/rides/completed",
+                    headers={"X-API-Key": secret},
+                    json={**ride, "estimated_amount_paise": "65000"},
+                )
+                valid = client.post(
+                    "/api/rides/completed",
+                    headers={"X-API-Key": secret},
+                    json=ride,
+                )
+                replay = client.post(
+                    "/api/rides/completed",
+                    headers={"X-API-Key": secret},
+                    json=ride,
+                )
+                health = client.get("/api/health")
+
+        self.assertEqual(invalid.status_code, 401)
+        self.assertEqual(boolean_actual.status_code, 422)
+        self.assertEqual(string_estimate.status_code, 422)
+        self.assertEqual(valid.status_code, 200)
+        self.assertEqual(valid.json()["status"], "created")
+        self.assertEqual(replay.json()["status"], "replayed")
+        for response in (
+            invalid,
+            boolean_actual,
+            string_estimate,
+            valid,
+            replay,
+            health,
+        ):
+            self.assertNotIn(secret, response.text)
 
 
 if __name__ == "__main__":

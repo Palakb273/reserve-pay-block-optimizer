@@ -994,7 +994,7 @@ Execution status is structured factual evidence. An explanation may display that
 
 ### Completion and settlement
 
-`settle_completed_transaction(...)` is the only Phase-10 path that accepts `RideTransactionOutcome`. After the ride finishes it fetches the normalized block, debits the exact actual fare, and releases the full remainder. It never calls the predictor or optimizer. If the actual fare exceeds the remaining authorization, it performs no speculative extra collection and returns an explicit shortfall with `insufficient_reserved_funds` status.
+`settle_completed_transaction(...)` is the only Phase-10 path that accepts `RideTransactionOutcome`. After the ride finishes it fetches the normalized block and calculates `outstanding_due = max(final_amount - already_debited, 0)`. It debits only that outstanding amount and releases the full unused remainder; it never calls the predictor or optimizer. If outstanding due exceeds the remaining authorization, it performs no speculative extra collection and returns an explicit shortfall with `insufficient_reserved_funds` status. A historical debit above the final fare is not refunded automatically: it is surfaced as `overpaid_reconciliation_required` with an exact overpaid amount.
 
 ### RazorpayProvider status
 
@@ -1056,7 +1056,7 @@ React / TypeScript dashboard
            optimization, dynamic, explanation, and mock execution services
 ```
 
-Money crosses the API as integer paise and probabilities cross as decimal strings. The FastAPI lifespan loads the trusted base and personalized model artifacts once; individual requests reuse those in-memory models. Invalid input and unavailable artifacts return structured, credential-safe errors.
+Money crosses the API as strict integer paise and probabilities cross as decimal strings. Boolean/string money representations are rejected. Public ride inputs are bounded to 500 km, 1,440 projected minutes, and a 5x surge multiplier before entering the floating-point model boundary. The FastAPI lifespan loads the trusted base and personalized model artifacts once; individual requests reuse those in-memory models. Invalid input and unavailable artifacts return structured, credential-safe errors.
 
 The interface has exactly three primary screens:
 
@@ -1108,6 +1108,9 @@ pnpm dev
 ```
 
 Open `http://127.0.0.1:5173/optimizer`. Vite proxies `/api` to the local FastAPI service. No credentials or external payment network are required; execution demonstrations use `MockReserveProvider` only.
+
+For final packaging, follow `docs/SUBMISSION_CHECKLIST.md` and create the archive
+from Git-tracked files so the ignored local `.env` is never included.
 
 ### Five-minute demo walkthrough
 

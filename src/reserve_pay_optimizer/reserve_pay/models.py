@@ -347,6 +347,7 @@ class DynamicBlockExecution:
 class SettlementStatus(StrEnum):
     SETTLED = "settled"
     INSUFFICIENT_RESERVED_FUNDS = "insufficient_reserved_funds"
+    OVERPAID_RECONCILIATION_REQUIRED = "overpaid_reconciliation_required"
 
 
 @dataclass(frozen=True, slots=True)
@@ -355,12 +356,48 @@ class SettlementResult:
     block_id: str
     authorized_amount: Money
     final_amount: Money
+    already_debited_before_settlement: Money
+    outstanding_due: Money
+    newly_debited: Money
     debited_amount: Money
     released_amount: Money
     shortfall: Money
+    overpaid_amount: Money
     status: SettlementStatus
     provider: ReserveProviderName
     final_block: ReserveBlock
+
+    def __post_init__(self) -> None:
+        expected_outstanding = max(
+            self.final_amount.amount_paise
+            - self.already_debited_before_settlement.amount_paise,
+            0,
+        )
+        expected_overpaid = max(
+            self.already_debited_before_settlement.amount_paise
+            - self.final_amount.amount_paise,
+            0,
+        )
+        if self.outstanding_due.amount_paise != expected_outstanding:
+            raise ValueError("outstanding_due must equal final amount less prior debit")
+        if self.overpaid_amount.amount_paise != expected_overpaid:
+            raise ValueError("overpaid_amount must expose prior historical over-collection")
+        if self.newly_debited.amount_paise > self.outstanding_due.amount_paise:
+            raise ValueError("settlement cannot debit more than the outstanding due")
+        if (
+            self.already_debited_before_settlement.amount_paise
+            + self.newly_debited.amount_paise
+            != self.debited_amount.amount_paise
+        ):
+            raise ValueError("cumulative debit must equal prior plus settlement debit")
+        if expected_overpaid == 0 and (
+            self.debited_amount.amount_paise > self.final_amount.amount_paise
+        ):
+            raise ValueError("normal settlement cannot collect more than the final amount")
+        if self.final_block.debited_amount != self.debited_amount:
+            raise ValueError("settlement debit must match final block accounting")
+        if self.final_block.released_amount != self.released_amount:
+            raise ValueError("settlement release must match final block accounting")
 
     def to_dict(self) -> dict[str, object]:
         return {
@@ -368,9 +405,13 @@ class SettlementResult:
             "block_id": self.block_id,
             "authorized_amount_paise": self.authorized_amount.amount_paise,
             "final_amount_paise": self.final_amount.amount_paise,
+            "already_debited_before_settlement_paise": self.already_debited_before_settlement.amount_paise,
+            "outstanding_due_paise": self.outstanding_due.amount_paise,
+            "newly_debited_paise": self.newly_debited.amount_paise,
             "debited_amount_paise": self.debited_amount.amount_paise,
             "released_amount_paise": self.released_amount.amount_paise,
             "shortfall_paise": self.shortfall.amount_paise,
+            "overpaid_amount_paise": self.overpaid_amount.amount_paise,
             "status": self.status.value,
             "provider": self.provider.value,
             "final_block": self.final_block.to_dict(),
