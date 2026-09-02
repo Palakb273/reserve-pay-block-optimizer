@@ -72,9 +72,15 @@ class ReserveIntelligenceAgent:
                     state.status = AgentStateStatus.OPTIMIZING
 
                 arguments = action.arguments or {}
-                result, audit_record = self.registry.execute_tool(
-                    action.tool_name, arguments, state
-                )
+                try:
+                    result, audit_record = self.registry.execute_tool(
+                        action.tool_name, arguments, state
+                    )
+                except Exception as exc:
+                    state.status = AgentStateStatus.FAILED
+                    state.error = getattr(exc, "code", type(exc).__name__)
+                    setattr(exc, "agent_state", state)
+                    raise
                 state.tool_calls.append(audit_record)
 
                 # Store tool output in typed state

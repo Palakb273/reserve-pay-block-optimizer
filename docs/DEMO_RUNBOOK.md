@@ -89,11 +89,18 @@ fingerprint. Compare Exact Estimate, Fixed 20%, and Optimized Balanced on:
 - Q05–Q99 observed calibration;
 - per-city diagnostics;
 - static versus dynamic re-optimization;
-- agent-versus-direct decision mismatches.
+- agent-versus-direct decision mismatches;
+- risk-profile target/realized metrics and profile-collapse diagnostics;
+- Base-versus-Personalized aggregate, history-depth, and observed segments;
+- dynamic benefit categories, explanation checks, and mock lifecycle validation.
 
 Use the values displayed from `demo/evidence/final_evidence.json`; do not memorize
 or substitute roadmap example numbers. Call out the 95% Wilson interval for
 collection success and the seeded bootstrap interval for average excess reserve.
+State the calibration limitation plainly: on the authoritative cohort, Q97
+observed coverage is `0.871750` and Q99 is `0.926000`, so recalibration and
+external validation are required before production claims. Also show the evidence
+fingerprint and the generated `final_evidence_summary.md`.
 
 ## 4:35–5:00 — Close
 

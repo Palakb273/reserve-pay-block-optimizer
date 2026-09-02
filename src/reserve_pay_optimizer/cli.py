@@ -21,7 +21,7 @@ from reserve_pay_optimizer.dynamic.serialization import (
 )
 from reserve_pay_optimizer.dynamic.service import DynamicRideService
 from reserve_pay_optimizer.dynamic.simulation import simulate_dynamic_transactions
-from reserve_pay_optimizer.explainability.models import ExplanationLevel
+from reserve_pay_optimizer.explainability.models import AuthorizationStatus, ExplanationLevel
 from reserve_pay_optimizer.explainability.service import ExplanationService
 from reserve_pay_optimizer.optimization.config import OptimizationConfig
 from reserve_pay_optimizer.optimization.optimizer import ReserveBlockOptimizer
@@ -368,7 +368,7 @@ def _parser() -> argparse.ArgumentParser:
     _add_optimization_arguments(reserve_pay_demo)
     prepare_evidence = subparsers.add_parser(
         "prepare-dashboard-evidence",
-        help="precompute deterministic Phase-11 dashboard evidence",
+        help="generate the deprecated deterministic Phase-11 regression fixture",
     )
     prepare_evidence.add_argument("--count", type=int, default=10_000)
     prepare_evidence.add_argument("--seed", type=int, default=202611)
@@ -636,6 +636,11 @@ def main(argv: Sequence[str] | None = None) -> int:
                         session,
                         application.decision,
                         ExplanationLevel(args.detail),
+                        authorization_status=(
+                            AuthorizationStatus.MOCK_PROVIDER_CONFIRMED
+                            if execution.status.value == "succeeded"
+                            else AuthorizationStatus.RECOMMENDATION_ONLY
+                        ),
                     ).to_dict()
                 update_outputs.append(update_output)
             settlement = reserve_service.settle_completed_transaction(

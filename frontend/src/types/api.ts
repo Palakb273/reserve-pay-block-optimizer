@@ -146,36 +146,40 @@ export interface StrategyEvidence {
 }
 
 export interface EvidenceResponse {
-  provenance: {
+  metadata: {
+    evidence_status: string
     dataset: string
     record_count: number
-    seed: number
-    predictor: string
-    policy: string
-    target_collection_probability: string
+    dataset_seed: number
     project_version: string
     dataset_fingerprint_sha256: string
-    synthetic_data_disclaimer: string
+    evidence_fingerprint_sha256: string
+    personalized_model: { model_version: string }
   }
-  strategies: Record<'exact_estimate' | 'fixed_buffer_20' | 'optimized_balanced', StrategyEvidence>
-  deltas: { collection_success_percentage_points_vs_exact: string; average_excess_reduction_paise_vs_fixed_20: number }
-  block_distribution: Array<{ lower_paise: number; upper_paise: number; count: number }>
-  tradeoff_points: Array<{ strategy: string; average_excess_block_paise: number; collection_success_rate: string }>
-  per_city: Record<string, { record_count: number; optimized_collection_success_rate: string; optimized_average_excess_block_paise: number }>
-  personalization: Record<'stable_history' | 'overrun_prone', { prediction_mode: string; history_count: number; q97_paise: number; recommended_block_paise: number }>
-  dynamic: {
-    record_count: number
-    static: StrategyEvidence
-    dynamic: StrategyEvidence
-    dynamic_diagnostics: { average_initial_block_paise: number; average_final_authorized_block_paise: number; rides_requiring_additional_block_rate: string }
-  }
-  strategy_comparison?: {
+  primary_strategy_comparison: {
+    metrics: Record<'exact_estimate' | 'fixed_buffer_20' | 'optimized_balanced', StrategyEvidence>
+    deltas: { optimized_collection_success_percentage_points_vs_exact: string; optimized_average_excess_reduction_paise_vs_fixed_20: number }
+    block_distribution: Array<{ lower_paise: number; upper_paise: number; count: number }>
+    tradeoff_points: Array<{ strategy: string; average_excess_block_paise: number; collection_success_rate: string }>
     confidence_intervals_95: Record<string, {
       collection_success_rate: { point_estimate: string; lower: string; upper: string; method: string }
       average_excess_block_paise: { point_estimate: string; lower: string; upper: string; method: string; samples: number }
     }>
   }
-  prediction_calibration?: {
+  cities: Record<string, { record_count: number; optimized_collection_success_rate: string; optimized_average_excess_block_paise: number }>
+  personalization: {
+    test_records: number
+    minimum_personalization_history: number
+    same_ride_history_demo: Record<'stable_history' | 'overrun_prone', { prediction_mode: string; history_count: number; q97_paise: number; recommended_block_paise: number }>
+  }
+  dynamic: {
+    record_count: number
+    static: StrategyEvidence
+    dynamic: StrategyEvidence
+    dynamic_diagnostics: { average_initial_block_paise: number; average_final_authorized_block_paise: number; rides_requiring_additional_block_rate: string }
+    benefit_breakdown: Record<string, number | string>
+  }
+  prediction: {
     quantiles: Record<string, {
       target_coverage: string
       observed_coverage: string
@@ -188,12 +192,19 @@ export interface EvidenceResponse {
     raw_quantile_crossing: { record_count: number; record_frequency: string; adjacent_pair_count: number }
     prediction_mode_counts: Record<string, number>
   }
-  agent_consistency?: {
-    record_count: number
+  agents: {
+    runs: number
     successful_runs: number
+    failed_runs: number
     decision_mismatches: number
+    equivalence_rate: string
+    decision_equivalence_rate: string
     average_tool_calls: number
   }
+  risk_profiles: { collapse_analysis: { all_three_same_rate: string; interpretation: string } }
+  explainability: { record_count: number; numeric_consistency_failures: number; privacy_violations: number }
+  reserve_pay_mock_validation: { total_scenarios: number; passed_scenarios: number; failed_scenarios: number }
+  limitations: string[]
 }
 
 export interface ApiErrorBody {

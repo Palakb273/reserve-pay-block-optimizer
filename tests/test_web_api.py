@@ -3,13 +3,12 @@
 from __future__ import annotations
 
 from pathlib import Path
-import tempfile
+import json
 import unittest
 
 from fastapi.testclient import TestClient
 
 from reserve_pay_optimizer.web.app import create_app
-from reserve_pay_optimizer.web.evidence import prepare_dashboard_evidence
 from reserve_pay_optimizer.web.services import DashboardSettings
 
 
@@ -19,9 +18,7 @@ ROOT = Path(__file__).resolve().parents[1]
 class DashboardApiTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
-        cls._temporary = tempfile.TemporaryDirectory()
-        evidence_path = Path(cls._temporary.name) / "evidence.json"
-        prepare_dashboard_evidence(count=30, seed=911, output=evidence_path)
+        evidence_path = ROOT / "demo/evidence/final_evidence.json"
         app = create_app(
             DashboardSettings(repository_root=ROOT, evidence_path=evidence_path)
         )
@@ -31,7 +28,6 @@ class DashboardApiTests(unittest.TestCase):
     @classmethod
     def tearDownClass(cls) -> None:
         cls._client_context.__exit__(None, None, None)
-        cls._temporary.cleanup()
 
     @staticmethod
     def _request(**overrides: object) -> dict[str, object]:
@@ -156,15 +152,19 @@ class DashboardApiTests(unittest.TestCase):
         first_authorized = body["timeline"][0]["authorized_amount_paise"]
         self.assertEqual(failed["authorized_amount_paise"], first_authorized)
 
-    def test_precomputed_evidence_contains_provenance_and_three_strategies(self) -> None:
+    def test_authoritative_evidence_is_returned_without_metric_transformation(self) -> None:
         response = self.client.get("/api/evidence")
         self.assertEqual(response.status_code, 200)
         body = response.json()
-        self.assertEqual(body["provenance"]["record_count"], 30)
-        self.assertEqual(set(body["strategies"]), {
+        source = json.loads(
+            (ROOT / "demo/evidence/final_evidence.json").read_text(encoding="utf-8")
+        )
+        self.assertEqual(body, source)
+        self.assertEqual(body["metadata"]["transaction_count"], 20_000)
+        self.assertEqual(set(body["primary_strategy_comparison"]["metrics"]), {
             "exact_estimate", "fixed_buffer_20", "optimized_balanced"
         })
-        self.assertIn("dataset_fingerprint_sha256", body["provenance"])
+        self.assertIn("dataset_fingerprint_sha256", body["metadata"])
 
     def test_invalid_input_uses_structured_safe_error(self) -> None:
         response = self.client.post(

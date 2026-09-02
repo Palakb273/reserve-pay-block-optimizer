@@ -53,10 +53,10 @@ class CustomerHistoryToolOutput:
         return {
             "customer_id": self.customer_id,
             "history_count": self.history_count,
-            "mean_fare_ratio": str(self.mean_fare_ratio) if self.mean_fare_ratio is not None else None,
-            "fare_ratio_stddev": str(self.fare_ratio_stddev) if self.fare_ratio_stddev is not None else None,
-            "overrun_rate": str(self.overrun_rate) if self.overrun_rate is not None else None,
-            "mean_positive_overrun_ratio": str(self.mean_positive_overrun_ratio) if self.mean_positive_overrun_ratio is not None else None,
+            "mean_fare_ratio": format_ratio(self.mean_fare_ratio) if self.mean_fare_ratio is not None else None,
+            "fare_ratio_stddev": format_ratio(self.fare_ratio_stddev) if self.fare_ratio_stddev is not None else None,
+            "overrun_rate": format_ratio(self.overrun_rate) if self.overrun_rate is not None else None,
+            "mean_positive_overrun_ratio": format_ratio(self.mean_positive_overrun_ratio) if self.mean_positive_overrun_ratio is not None else None,
             "personalization_eligible": self.personalization_eligible,
         }
 

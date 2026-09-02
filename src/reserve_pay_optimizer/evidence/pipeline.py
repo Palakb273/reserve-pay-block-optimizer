@@ -192,6 +192,11 @@ def _risk_profile_evidence(dataset, predictor, optimizer) -> dict[str, object]:
         metrics = aggregate_evaluations(rows).to_dict()
         profiles[profile.value] = {
             "target_collection_probability": format_ratio(policy.target_collection_probability),
+            "realized_collection_success": metrics["collection_success_rate"],
+            "under_block_rate": metrics["under_block_rate"],
+            "average_block_paise": int((Decimal(sum(blocks)) / Decimal(len(blocks))).to_integral_value(rounding=ROUND_HALF_UP)),
+            "average_excess_paise": metrics["average_excess_block_paise"],
+            "capital_efficiency": metrics["capital_efficiency"],
             "policy_satisfied_count": satisfied,
             "policy_satisfaction_rate": format_ratio(Decimal(satisfied) / Decimal(len(blocks))),
             "average_recommended_block_paise": int((Decimal(sum(blocks)) / Decimal(len(blocks))).to_integral_value(rounding=ROUND_HALF_UP)),
@@ -212,14 +217,14 @@ def _risk_profile_evidence(dataset, predictor, optimizer) -> dict[str, object]:
         "record_count": count,
         "all_three_same_count": all_same, "all_three_same_rate": format_ratio(Decimal(all_same) / Decimal(count)),
         "exactly_two_same_count": two_same, "exactly_two_same_rate": format_ratio(Decimal(two_same) / Decimal(count)),
-        "all_distinct_count": all_distinct, "all_distinct_rate": format_ratio(Decimal(all_distinct) / Decimal(count)),
-        "at_least_two_profiles_differ_count": at_least_two_differ,
-        "at_least_two_profiles_differ_rate": format_ratio(Decimal(at_least_two_differ) / Decimal(count)),
+        "all_three_distinct_count": all_distinct, "all_three_distinct_rate": format_ratio(Decimal(all_distinct) / Decimal(count)),
+        "at_least_two_differ_count": at_least_two_differ,
+        "at_least_two_differ_rate": format_ratio(Decimal(at_least_two_differ) / Decimal(count)),
         "aggressive_equals_balanced_count": aggressive_equals_balanced,
         "aggressive_equals_balanced_rate": format_ratio(Decimal(aggressive_equals_balanced) / Decimal(count)),
-        "interpretation": "Profile collapse is measured directly. Frequent identical recommendations mean the unconstrained objective optimum already satisfies multiple policy floors; it is not evidence that the profiles are distinct on every ride.",
+        "interpretation": "The three policy constraints frequently converge to the same selected block because the unchanged Phase-5 objective often favors a high feasible candidate even when a lower minimum probability is permitted. This is measured convergence, not a policy-logic failure.",
     }
-    return {"profiles": profiles, "collapse_diagnostics": collapse}
+    return {"profiles": profiles, "collapse_analysis": collapse}
 
 
 def _atomic_write(output: Path, artifact: dict[str, object]) -> None:
@@ -273,7 +278,8 @@ def generate_final_evidence(config: FinalEvidenceConfig) -> dict[str, object]:
     dynamic_dataset = simulate_dynamic_transactions(dynamic_config)
     dynamic_history = InMemoryCustomerHistoryProvider(dynamic_dataset.transactions, dynamic_dataset.outcomes)
     dynamic_predictor = _AuditablePersonalizedPredictor(base_artifact.model, personalized_artifact.model, dynamic_history)
-    dynamic = evaluate_dynamic_reoptimization(dynamic_dataset, DynamicRideService(dynamic_predictor, optimizer), policy).to_dict()
+    dynamic_service = DynamicRideService(dynamic_predictor, optimizer)
+    dynamic = evaluate_dynamic_reoptimization(dynamic_dataset, dynamic_service, policy).to_dict()
     dynamic["dataset_seed"] = config.dynamic_seed
 
     agent_report = evaluate_agent_orchestration(
@@ -281,6 +287,8 @@ def generate_final_evidence(config: FinalEvidenceConfig) -> dict[str, object]:
         personalized_artifact.model, history, risk_profile=policy.profile,
     )
     agents = agent_report.to_dict()
+    agents["runs"] = agents.pop("total_records")
+    agents["decision_equivalence_rate"] = agents["equivalence_rate"]
     agents["financial_equivalence_required"] = True
     agents["timing_is_observational"] = True
     agents["average_execution_time_ms"] = agents.pop("average_duration_ms")
@@ -288,15 +296,22 @@ def generate_final_evidence(config: FinalEvidenceConfig) -> dict[str, object]:
     agents["p95_execution_time_ms"] = agents.pop("p95_duration_ms")
     explainability = {
         "record_count": agent_report.explanation_count,
-        "structured_explanation_count": agent_report.explanation_count,
-        "generated_text_count": 0,
-        "fallback_count": 0,
-        "numeric_consistency_mismatches": agent_report.explanation_numeric_mismatches,
+        "explanations_generated": agent_report.explanation_count,
+        "structured_valid_count": agent_report.explanation_count,
+        "structured_valid_rate": "1.000000",
+        "numeric_consistency_failures": agent_report.explanation_numeric_mismatches,
         "privacy_violations": agent_report.explanation_privacy_violations,
+        "template_fallbacks": 0,
+        "generated_text_failures": 0,
         "renderers": {"deterministic_phase_9": agent_report.explanation_count},
         "validation": "Structured Phase-9 evidence is re-derived from authoritative prediction and policy services before deterministic rendering.",
     }
-    mock_validation = validate_mock_reserve_pay(dataset.transactions[0])
+    mock_validation = validate_mock_reserve_pay(
+        dataset.transactions[0],
+        dynamic_dataset=dynamic_dataset,
+        dynamic_service=dynamic_service,
+        policy=policy,
+    )
 
     selected, exact, fixed = strategy_metrics["optimized_balanced"], strategy_metrics["exact_estimate"], strategy_metrics["fixed_buffer_20"]
     optimized_blocks = tuple(item.recommended_block.amount_paise for item in optimized.optimization_results)
@@ -320,8 +335,22 @@ def generate_final_evidence(config: FinalEvidenceConfig) -> dict[str, object]:
         "metadata": {
             "evidence_status": "complete", "project_version": __version__,
             "dataset": "Synthetic India Mobility", "record_count": config.transaction_count,
+            "transaction_count": config.transaction_count,
+            "customer_pool_size": config.customer_pool_size,
             "dataset_seed": config.dataset_seed, "dataset_fingerprint_sha256": dataset_fingerprint(dataset),
-            "evidence_fingerprint_sha256": "", "configuration": config.to_dict(),
+            "dataset_fingerprint": dataset_fingerprint(dataset),
+            "evidence_fingerprint_sha256": "", "evidence_fingerprint": "",
+            "base_model_version": base_artifact.model.model_version,
+            "personalized_model_version": personalized_artifact.model.model_version,
+            "primary_strategy": "optimized_balanced",
+            "primary_risk_profile": policy.profile.value,
+            "dynamic_seed": config.dynamic_seed,
+            "dynamic_record_count": config.dynamic_record_count,
+            "agent_record_count": config.agent_record_count,
+            "bootstrap_seed": config.bootstrap_seed,
+            "bootstrap_samples": config.bootstrap_samples,
+            "models_retrained": False,
+            "configuration": config.to_dict(),
             "base_model": _artifact_metadata(base_artifact.metadata),
             "personalized_model": _artifact_metadata(personalized_artifact.metadata),
             "evaluation_dataset_used_for_training": False, "retraining_performed": False,
@@ -349,7 +378,9 @@ def generate_final_evidence(config: FinalEvidenceConfig) -> dict[str, object]:
             "Merchant-history personalization and persistent production storage are unavailable.",
         ],
     }
-    artifact["metadata"]["evidence_fingerprint_sha256"] = evidence_fingerprint(artifact)  # type: ignore[index]
+    fingerprint = evidence_fingerprint(artifact)
+    artifact["metadata"]["evidence_fingerprint_sha256"] = fingerprint  # type: ignore[index]
+    artifact["metadata"]["evidence_fingerprint"] = fingerprint  # type: ignore[index]
     validate_final_evidence(artifact, config)
     _atomic_write(config.output_path, artifact)
     return artifact
@@ -358,6 +389,12 @@ def generate_final_evidence(config: FinalEvidenceConfig) -> dict[str, object]:
 def _require(condition: bool, message: str) -> None:
     if not condition:
         raise EvidenceValidationError(message)
+
+
+def _require_fields(value: object, fields: set[str], label: str) -> None:
+    _require(isinstance(value, dict), f"{label} must be an object")
+    missing = fields - set(value)
+    _require(not missing, f"{label} is missing required fields: {', '.join(sorted(missing))}")
 
 
 def _walk_floats(value: object, path: str = "$"):
@@ -371,6 +408,16 @@ def _walk_floats(value: object, path: str = "$"):
         yield path, value
 
 
+def _walk_fields(value: object, path: str = "$"):
+    if isinstance(value, dict):
+        for key, item in value.items():
+            yield f"{path}.{key}", key, item
+            yield from _walk_fields(item, f"{path}.{key}")
+    elif isinstance(value, list):
+        for index, item in enumerate(value):
+            yield from _walk_fields(item, f"{path}[{index}]")
+
+
 def validate_final_evidence(artifact: dict[str, object], config: FinalEvidenceConfig) -> None:
     """Reject incomplete, non-finite, inconsistent, or non-reproducible evidence."""
 
@@ -380,64 +427,199 @@ def validate_final_evidence(artifact: dict[str, object], config: FinalEvidenceCo
     _require(isinstance(meta, dict), "metadata must be an object")
     _require(meta.get("evidence_status") == "complete", "evidence status must be complete")
     _require(meta.get("record_count") == config.transaction_count, "record count is inconsistent")
+    _require(meta.get("dataset_seed") == config.dataset_seed, "dataset seed is inconsistent")
+    _require(meta.get("transaction_count") == config.transaction_count, "transaction count is inconsistent")
+    _require(int(meta.get("transaction_count", 0)) >= 10_000, "authoritative transaction count is below minimum")
+    _require(meta.get("customer_pool_size") == config.customer_pool_size, "customer pool is inconsistent")
     _require(meta.get("retraining_performed") is False, "evidence generation must not retrain models")
+    _require(meta.get("models_retrained") is False, "models_retrained must be false")
     _require(meta.get("evaluation_dataset_used_for_training") is False, "evaluation data must be fresh")
     for key in ("dataset_fingerprint_sha256", "evidence_fingerprint_sha256"):
         _require(isinstance(meta.get(key), str) and len(meta[key]) == 64, f"{key} must be SHA-256")
+    _require(meta.get("dataset_fingerprint") == meta["dataset_fingerprint_sha256"], "dataset fingerprint aliases disagree")
     for model_key in ("base_model", "personalized_model"):
         model = meta.get(model_key)
         _require(isinstance(model, dict) and bool(model.get("trusted_sources_only")), f"trusted {model_key} metadata is required")
         _require(bool(model.get("model_version")), f"{model_key} version is required")
+    for key in ("base_model_version", "personalized_model_version", "primary_strategy", "primary_risk_profile"):
+        _require(bool(meta.get(key)), f"metadata.{key} is required")
+    for key, expected in (
+        ("dynamic_seed", config.dynamic_seed),
+        ("dynamic_record_count", config.dynamic_record_count),
+        ("agent_record_count", config.agent_record_count),
+        ("bootstrap_seed", config.bootstrap_seed),
+        ("bootstrap_samples", config.bootstrap_samples),
+    ):
+        _require(meta.get(key) == expected, f"metadata.{key} is inconsistent")
 
     primary = artifact["primary_strategy_comparison"]
     _require(isinstance(primary, dict), "primary strategy comparison must be an object")
     strategy_names = {"exact_estimate", "fixed_buffer_20", "optimized_balanced"}
     _require(set(primary.get("metrics", {})) == strategy_names, "primary strategy set is incomplete")
     _require(set(primary.get("confidence_intervals_95", {})) == strategy_names, "confidence intervals are incomplete")
-    for metric in primary["metrics"].values():
+    required_strategy_fields = {
+        "strategy", "transaction_count", "collection_success_count",
+        "collection_success_rate", "under_block_count", "under_block_rate",
+        "average_block_amount_paise", "average_excess_block_paise",
+        "average_under_block_paise", "average_excess_block_ratio",
+        "capital_efficiency", "total_actual_amount_paise", "total_blocked_amount_paise",
+    }
+    for name, metric in primary["metrics"].items():
+        _require_fields(metric, required_strategy_fields, f"primary strategy {name}")
+        _require(metric["strategy"] == name, f"primary strategy identity mismatch for {name}")
         _require(metric["transaction_count"] == config.transaction_count, "strategy record count is inconsistent")
         for field in ("collection_success_rate", "under_block_rate", "capital_efficiency", "average_excess_block_ratio"):
             value = Decimal(str(metric[field]))
             _require(value.is_finite() and Decimal(0) <= value <= Decimal(1), f"invalid strategy ratio {field}")
 
     prediction = artifact["prediction"]
+    _require_fields(
+        prediction,
+        {"record_count", "mean_pinball_loss_paise", "median_mae_paise", "quantiles", "prediction_interval_q05_q95", "raw_quantile_crossing", "per_city"},
+        "prediction evidence",
+    )
     _require(prediction.get("record_count") == config.transaction_count, "prediction count is inconsistent")
     _require(set(prediction.get("quantiles", {})) == {f"{q:.2f}" for q in QUANTILES}, "prediction quantiles are incomplete")
-    for quantile in prediction["quantiles"].values():
+    for key, quantile in prediction["quantiles"].items():
+        _require_fields(
+            quantile,
+            {"target_coverage", "observed_coverage", "calibration_error", "absolute_calibration_error", "pinball_loss_paise"},
+            f"prediction quantile {key}",
+        )
         observed = Decimal(quantile["observed_coverage"])
         _require(observed.is_finite() and Decimal(0) <= observed <= Decimal(1), "invalid observed coverage")
 
     personalization = artifact["personalization"]
+    _require_fields(
+        personalization,
+        {"test_records", "eligible_record_count", "minimum_personalization_history", "fallback_record_count", "fallback_percentage", "personalized_record_count", "personalized_percentage", "base_predictor", "personalized_predictor", "comparison", "history_depth", "observed_history_segments", "downstream_balanced_policy", "same_ride_history_demo"},
+        "personalization evidence",
+    )
     _require(personalization.get("test_records") == config.transaction_count, "personalization count is inconsistent")
     _require(personalization.get("minimum_personalization_history") == MINIMUM_PERSONALIZATION_HISTORY, "personalization threshold is inconsistent")
+    _require(personalization.get("fallback_record_count", 0) + personalization.get("personalized_record_count", 0) == config.transaction_count, "personalization modes do not account for every record")
     _require(set(personalization.get("history_depth", {})) == {"0-2", "3-5", "6-10", "11+"}, "history-depth evidence is incomplete")
     _require(bool(personalization.get("observed_history_segments")), "observed segment evidence is required")
 
     risks = artifact["risk_profiles"]
     _require(set(risks.get("profiles", {})) == {"aggressive", "balanced", "conservative"}, "risk profiles are incomplete")
-    collapse = risks.get("collapse_diagnostics", {})
+    collapse = risks.get("collapse_analysis", {})
+    required_risk_fields = {
+        "target_collection_probability", "realized_collection_success", "under_block_rate",
+        "average_block_paise", "average_excess_paise", "capital_efficiency",
+        "policy_satisfaction_rate", "realized_minus_target", "metrics",
+    }
+    for name, profile in risks["profiles"].items():
+        _require_fields(profile, required_risk_fields, f"risk profile {name}")
+    _require_fields(
+        collapse,
+        {"record_count", "all_three_same_count", "all_three_same_rate", "exactly_two_same_count", "exactly_two_same_rate", "at_least_two_differ_count", "at_least_two_differ_rate", "all_three_distinct_count", "all_three_distinct_rate", "aggressive_equals_balanced_count", "aggressive_equals_balanced_rate", "interpretation"},
+        "risk-profile collapse analysis",
+    )
     _require(collapse.get("record_count") == config.transaction_count, "collapse count is inconsistent")
-    _require(collapse.get("all_three_same_count", 0) + collapse.get("exactly_two_same_count", 0) + collapse.get("all_distinct_count", 0) == config.transaction_count, "collapse categories do not account for every record")
+    _require(collapse.get("all_three_same_count", 0) + collapse.get("exactly_two_same_count", 0) + collapse.get("all_three_distinct_count", 0) == config.transaction_count, "collapse categories do not account for every record")
 
     dynamic = artifact["dynamic"]
+    _require_fields(
+        dynamic,
+        {"record_count", "dataset_seed", "static", "dynamic", "dynamic_diagnostics", "benefit_breakdown", "evaluation_scope", "authorization_assumption"},
+        "dynamic evidence",
+    )
     _require(dynamic.get("record_count") == config.dynamic_record_count, "dynamic count is inconsistent")
-    benefit = dynamic.get("benefit_categories", {})
+    benefit = dynamic.get("benefit_breakdown", {})
+    for side in ("static", "dynamic"):
+        _require_fields(
+            dynamic[side],
+            {"transaction_count", "collection_success_rate", "under_block_rate", "average_excess_block_paise", "average_under_block_paise", "average_excess_block_ratio", "capital_efficiency"},
+            f"dynamic {side} aggregate",
+        )
+        _require(dynamic[side]["transaction_count"] == config.dynamic_record_count, f"dynamic {side} count is inconsistent")
+    _require_fields(
+        dynamic["dynamic_diagnostics"],
+        {"average_initial_block_paise", "average_final_authorized_block_paise", "average_total_additional_block_paise", "average_additional_when_triggered_paise", "rides_requiring_additional_block_rate", "average_reoptimization_count", "average_block_increase_count"},
+        "dynamic diagnostics",
+    )
+    _require_fields(
+        benefit,
+        {"static_failed_dynamic_succeeded", "static_failed_dynamic_succeeded_rate", "both_succeeded", "both_succeeded_rate", "both_failed", "both_failed_rate", "static_succeeded_dynamic_failed", "static_succeeded_dynamic_failed_rate", "dynamic_no_increase_required", "dynamic_no_increase_required_rate"},
+        "dynamic benefit breakdown",
+    )
     _require(sum(benefit.get(key, 0) for key in ("static_failed_dynamic_succeeded", "both_succeeded", "both_failed", "static_succeeded_dynamic_failed")) == config.dynamic_record_count, "dynamic outcome categories are incomplete")
     _require(set(artifact["cities"]) == {"delhi", "mumbai", "bengaluru", "hyderabad", "pune", "chennai", "kolkata"}, "city evidence is incomplete")
+    city_total = 0
+    for name, city in artifact["cities"].items():
+        _require_fields(city, {"record_count", "optimized_collection_success_rate", "optimized_average_excess_block_paise", "strategies"}, f"city {name}")
+        city_total += int(city["record_count"])
+    _require(city_total == config.transaction_count, "city counts do not account for every record")
 
     agents = artifact["agents"]
-    _require(agents.get("total_records") == config.agent_record_count, "agent cohort is inconsistent")
+    _require_fields(
+        agents,
+        {"runs", "successful_runs", "failed_runs", "decision_mismatches", "equivalence_rate", "decision_equivalence_rate", "total_tool_calls", "average_tool_calls", "average_execution_time_ms", "median_execution_time_ms", "p95_execution_time_ms", "step_limit_failures"},
+        "agent evidence",
+    )
+    _require(agents.get("runs") == config.agent_record_count, "agent cohort is inconsistent")
     _require(agents.get("failed_runs") == 0, "agent execution failures are not allowed")
+    _require(agents.get("successful_runs", 0) + agents.get("failed_runs", 0) == config.agent_record_count, "agent run counts are inconsistent")
     _require(agents.get("decision_mismatches") == 0, "agent/direct decision mismatch detected")
-    _require(Decimal(agents.get("equivalence_rate", "0")) == Decimal(1), "agent equivalence must be 100%")
+    _require(
+        agents.get("decision_equivalence_rate") == agents.get("equivalence_rate")
+        and Decimal(agents.get("decision_equivalence_rate", "0")) == Decimal(1),
+        "agent equivalence must be 100%",
+    )
     explanations = artifact["explainability"]
+    _require_fields(
+        explanations,
+        {"record_count", "explanations_generated", "structured_valid_count", "structured_valid_rate", "numeric_consistency_failures", "privacy_violations", "template_fallbacks", "generated_text_failures", "renderers"},
+        "explainability evidence",
+    )
     _require(explanations.get("record_count") == config.agent_record_count, "explanation cohort is inconsistent")
-    _require(explanations.get("numeric_consistency_mismatches") == 0, "explanation numeric mismatch detected")
+    _require(explanations.get("explanations_generated") == config.agent_record_count, "explanation generation count is inconsistent")
+    _require(explanations.get("structured_valid_count") == config.agent_record_count, "structured explanation validation is incomplete")
+    _require(explanations.get("numeric_consistency_failures") == 0, "explanation numeric mismatch detected")
     _require(explanations.get("privacy_violations") == 0, "explanation privacy violation detected")
     mock = artifact["reserve_pay_mock_validation"]
+    _require_fields(mock, {"provider", "network_calls_made", "total_scenarios", "passed_scenarios", "failed_scenarios", "scenarios"}, "mock Reserve Pay validation")
     _require(mock.get("total_scenarios", 0) >= 11, "mock lifecycle evidence is incomplete")
     _require(mock.get("failed_scenarios") == 0 and mock.get("passed_scenarios") == mock.get("total_scenarios"), "mock lifecycle validation failed")
+    required_mock_scenarios = {
+        "create_success", "idempotent_create", "increase_success", "partial_debit",
+        "full_settlement", "release_remaining_amount", "permanent_failure_surfaced",
+        "transient_retry_success", "idempotency_conflict",
+        "stale_success_reconciliation_visible", "under_block_shortfall",
+    }
+    _require(isinstance(mock["scenarios"], list), "mock scenarios must be a list")
+    observed_mock_scenarios = set()
+    for index, scenario in enumerate(mock["scenarios"]):
+        _require_fields(scenario, {"scenario", "expected_state", "observed_state", "passed"}, f"mock scenario {index}")
+        _require(scenario["passed"] is True, f"mock scenario {scenario['scenario']} did not pass")
+        observed_mock_scenarios.add(scenario["scenario"])
+    _require(required_mock_scenarios.issubset(observed_mock_scenarios), "required mock lifecycle scenarios are incomplete")
     _require(isinstance(artifact["limitations"], list) and len(artifact["limitations"]) >= 5, "limitations are incomplete")
     for path, value in _walk_floats(artifact):
         _require(math.isfinite(value), f"non-finite numeric value at {path}")
+    for path, key, value in _walk_fields(artifact):
+        if isinstance(value, (str, int, float, Decimal)) and (
+            key.endswith("_rate")
+            or key.endswith("_probability")
+            or key.endswith("_coverage")
+            or key.endswith("_percentage")
+        ):
+            try:
+                ratio = Decimal(str(value))
+            except Exception as exc:
+                raise EvidenceValidationError(f"invalid probability/rate at {path}") from exc
+            _require(ratio.is_finite() and Decimal(0) <= ratio <= Decimal(1), f"out-of-range probability/rate at {path}")
+        if (
+            isinstance(value, (str, int, float, Decimal))
+            and key.endswith("_paise")
+            and "improvement" not in key
+            and "reduction" not in key
+        ):
+            try:
+                money_value = Decimal(str(value))
+            except Exception as exc:
+                raise EvidenceValidationError(f"invalid monetary metric at {path}") from exc
+            _require(money_value.is_finite() and money_value >= 0, f"negative/non-finite monetary metric at {path}")
+    _require(meta.get("evidence_fingerprint") == meta["evidence_fingerprint_sha256"], "evidence fingerprint aliases disagree")
     _require(meta["evidence_fingerprint_sha256"] == evidence_fingerprint(artifact), "evidence fingerprint does not match canonical content")

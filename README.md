@@ -1,6 +1,6 @@
 # Reserve Pay Block Optimizer
 
-> **New:** The dashboard can run in an optional MongoDB-backed mode while the existing synthetic fixture mode remains the default for demos and tests. See [MongoDB production mode](docs/PRODUCTION_MONGODB.md) for configuration, ingestion, indexes, readiness, and remaining go-live work.
+> **Runtime modes:** Demo and test workflows require no database and use checked-in synthetic fixtures plus in-memory execution state. MongoDB is an optional application-storage mode for persisted history and run records; see [MongoDB production mode](docs/PRODUCTION_MONGODB.md). Neither mode turns the current synthetic evaluation into production evidence.
 
 This Python 3.11+ and React/TypeScript project defines, simulates, predicts, optimizes, dynamically revises, explains, executes, and demonstrates reserve blocks for India-first mobility payments. Phase 11 adds a polished three-screen decision dashboard over the unchanged Python financial engine.
 
@@ -490,7 +490,7 @@ examples/
 tests/                              Phase 1-through-7 tests
 ```
 
-Domain and service code remains independent of HTTP and Razorpay SDK objects. The only direct runtime dependency is scikit-learn.
+Domain and service code remains independent of HTTP and Razorpay SDK objects. Direct runtime dependencies are FastAPI, HTTPX, scikit-learn, and Uvicorn; PyMongo is optional for MongoDB mode. The React dashboard has its own dependencies in `frontend/package.json`.
 
 ## Setup
 
@@ -1068,19 +1068,27 @@ Traffic is not a new model feature. The dashboard adapter deterministically maps
 
 ### Reproducible evidence
 
-The original Phase-11 `demo/evidence/dashboard_evidence.json` remains reproducible
-for regression tests. The live dashboard now defaults to the richer
-`demo/evidence/final_evidence.json` documented under Phase 13:
+`demo/evidence/final_evidence.json` is the sole authoritative evidence artifact.
+`demo/evidence/dashboard_evidence.json` is retained only as a deprecated Phase-11
+regression fixture and must not be cited as final evidence. The dashboard defaults
+to the authoritative artifact:
 
 ```powershell
 python -m reserve_pay_optimizer prepare-final-evidence
 ```
 
 It records the dataset count, seeds, customer pools, predictor/model versions,
-Balanced policy target, project version, bootstrap configuration, and canonical
-SHA-256 dataset fingerprint. All evidence is synthetic and is not production
-Razorpay, merchant, Uber, Ola, or measured city data. The observed test metrics
-are displayed honestly and need not equal the 97% modeled policy target exactly.
+project version, bootstrap configuration, a canonical SHA-256 dataset fingerprint,
+and a canonical evidence-content fingerprint. It also generates
+`demo/evidence/final_evidence_summary.md` from the JSON fields. Agent wall-clock
+timing is observational and excluded from the evidence hash; configuration and
+financial metrics are included. All evidence is synthetic and is not production
+Razorpay, merchant, Uber, Ola, or measured city data.
+
+The current fresh cohort materially under-covers the highest requested quantiles:
+Q97 observed coverage is `0.871750` and Q99 observed coverage is `0.926000`.
+These values are disclosed rather than tuned away. Recalibration and external
+validation are required before any production calibration claim.
 
 ### Local startup
 
@@ -1106,7 +1114,7 @@ Open `http://127.0.0.1:5173/optimizer`. Vite proxies `/api` to the local FastAPI
 1. Open **Optimizer** and point out ₹650.00 estimated fare, Hyderabad context, Stable History, and Balanced / 97% policy. Calculate and show the exact recommended block, Q05–Q99 rail, personalized mode, and deterministic reason.
 2. Switch customer profile to **Overrun-Prone History** and recalculate. The changed distribution and recommendation come from the existing Phase-7 model, not UI arithmetic.
 3. Open **What-if Simulator**, increase traffic and surge, and show the previous/new comparison after the backend debounce. Run **Failure demo** to show that the recommendation increases while authorized funds remain unchanged after provider rejection.
-4. Open **Evidence** and identify the 10,000-record seed/fingerprint. Compare Exact, Fixed 20%, and Optimized on collection success and average excess, then show city diagnostics and the dynamic/static evidence.
+4. Open **Evidence** and identify the authoritative 20,000-record seed, dataset fingerprint, and evidence fingerprint. Compare Exact, Fixed 20%, and Optimized, then expand the risk, personalization, dynamic, agent, explanation, mock-execution, and limitation details.
 5. Return to **Optimizer** and authorize through the mock provider. Emphasize that recommendation precedes execution and that this phase performs no live Razorpay call.
 
 ### Dashboard API
@@ -1216,7 +1224,7 @@ python -m reserve_pay_optimizer agent-decide `
 python -m unittest discover -s tests -v
 ```
 
-The Python test suite covers 227 tests across all phases (domain, simulator, baselines, prediction, optimization, policy, dynamic re-optimization, explainability, Reserve Pay execution, web API, agent orchestration, and final evidence).
+The Python suite contains more than 234 deterministic tests across domain, simulator, baselines, prediction, optimization, policy, personalization, dynamic re-optimization, explainability, Reserve Pay execution, web API, agent orchestration, and final evidence. Run the command above for the current exact count.
 
 Frontend checks run from `frontend`:
 
@@ -1234,13 +1242,13 @@ Phase 12 adds an AI agent orchestration layer. It does not contain:
 - fake merchant risk scores or fabricated merchant transaction history;
 - vendor LLM API dependencies for test execution;
 - a fourth top-level dashboard screen;
-- production database or distributed state storage.
+- a mandatory production database or distributed state requirement for demo/test execution (MongoDB remains optional application storage).
 
 ## Phase 13 — Evaluation and Evidence
 
-Phase 13 creates one authoritative, machine-readable artifact from a fresh
-synthetic evaluation cohort. It does not retrain either prediction model and it
-never evaluates on the models' training records.
+Phase 13 creates one authoritative machine-readable artifact and a generated
+Markdown summary from a fresh synthetic evaluation cohort. It does not retrain
+either prediction model and never evaluates on the models' training records.
 
 The default run uses:
 
@@ -1252,8 +1260,11 @@ The default run uses:
 
 It reports Exact Estimate, Fixed 20%, and Optimized Balanced on the same outcomes;
 Q05–Q99 coverage and calibration; raw quantile crossing; median MAE and pinball
-loss; per-city strategy/calibration metrics; static-versus-dynamic evidence; and
-agent decision consistency. Collection-success rates include 95% Wilson intervals.
+loss; per-city strategy/calibration metrics; Base-vs-Personalized aggregate,
+history-depth, observed-segment, and downstream policy metrics; all three risk
+profiles plus collapse diagnostics; dynamic benefit categories; direct-vs-agent
+equivalence and timing; explanation consistency/privacy; and a deterministic
+mock-payment lifecycle suite. Collection-success rates include 95% Wilson intervals.
 Average excess-block amounts include deterministic 95% percentile-bootstrap
 intervals. These intervals quantify sampling uncertainty in the synthetic cohort;
 they do not turn model outputs into guarantees.
@@ -1277,9 +1288,10 @@ python -m reserve_pay_optimizer prepare-final-evidence `
 ```
 
 The output records model metadata, library compatibility, every seed and cohort
-size, a canonical SHA-256 dataset fingerprint, and explicit limitations. Artifact
-validation fails closed if a required strategy, quantile, or zero-mismatch agent
-consistency result is absent.
+size, path-independent dataset SHA-256, canonical content SHA-256, and explicit
+limitations. Generation validates all required sections and writes JSON plus
+Markdown atomically. Missing or corrupt sections, non-finite values, failed mock
+scenarios, explanation violations, or an agent mismatch prevent publication.
 
 All current evidence uses simulator-generated India mobility records. No
 production Razorpay, merchant, Uber, Ola, or customer data is used, and observed

@@ -184,6 +184,19 @@ class ExplainabilityTests(unittest.TestCase):
         self.assertIn("simulated/application session state", confirmed.text)
         self.assertIn("max(recommended target block", confirmed.text)
 
+        mock_confirmed = ExplanationService().explain_dynamic_decision(
+            confirmed_session,
+            application.decision,
+            ExplanationLevel.DETAILED,
+            authorization_status=AuthorizationStatus.MOCK_PROVIDER_CONFIRMED,
+        )
+        self.assertEqual(
+            mock_confirmed.facts.dynamic_context.authorization_status,
+            AuthorizationStatus.MOCK_PROVIDER_CONFIRMED,
+        )
+        self.assertIn("configured mock reserve provider", mock_confirmed.text)
+        self.assertIn("No external or real payment network was called", mock_confirmed.text)
+
     def test_validation_metrics_are_factual_counts_not_composite_scores(self):
         _, session = self.sources()
         service = ExplanationService()

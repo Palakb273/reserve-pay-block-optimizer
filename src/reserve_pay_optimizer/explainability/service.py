@@ -9,6 +9,7 @@ from reserve_pay_optimizer.explainability.evidence import (
     build_reserve_decision_evidence,
 )
 from reserve_pay_optimizer.explainability.models import (
+    AuthorizationStatus,
     DecisionExplanation,
     ExplanationLevel,
     RenderedDecisionExplanation,
@@ -109,8 +110,11 @@ class ExplanationService:
         session: DynamicRideSession,
         decision: DynamicReoptimizationDecision,
         detail: ExplanationLevel = ExplanationLevel.CONCISE,
+        authorization_status: AuthorizationStatus | None = None,
     ) -> RenderedDecisionExplanation:
         return self._render(
-            build_dynamic_decision_evidence(session, decision),
+            build_dynamic_decision_evidence(
+                session, decision, authorization_status=authorization_status
+            ),
             detail,
         )

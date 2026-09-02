@@ -532,8 +532,20 @@ class DashboardService:
                 "Precomputed final evidence is unavailable. Run prepare-final-evidence.",
                 status_code=503,
             ) from exc
-        required = {"provenance", "strategies", "block_distribution", "per_city", "personalization", "dynamic"}
-        if not isinstance(value, dict) or not required.issubset(value):
+        required = {
+            "metadata",
+            "primary_strategy_comparison",
+            "prediction",
+            "personalization",
+            "risk_profiles",
+            "dynamic",
+            "cities",
+            "agents",
+            "explainability",
+            "reserve_pay_mock_validation",
+            "limitations",
+        }
+        if not isinstance(value, dict) or set(value) != required:
             raise DashboardError(
                 "invalid_evidence_artifact",
                 "Precomputed dashboard evidence failed validation.",

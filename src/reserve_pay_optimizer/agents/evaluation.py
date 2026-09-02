@@ -105,6 +105,10 @@ def evaluate_agent_orchestration(
             mismatches.append({
                 "transaction_id": context.transaction_id,
                 "error_code": getattr(exc, "code", type(exc).__name__),
+                "failed_tool_trace": [
+                    record.to_dict()
+                    for record in getattr(getattr(exc, "agent_state", None), "tool_calls", [])
+                ],
             })
             continue
         duration = (perf_counter() - started) * 1000
@@ -118,6 +122,8 @@ def evaluate_agent_orchestration(
             for forbidden in (
                 '"customer_id"', '"actual_amount"', '"completed_at"',
                 '"pricing_noise"', '"actual_distance"', '"actual_duration"',
+                "customer_overrun_bias", "customer_variance_multiplier",
+                "route_change latent", "traffic_change latent", "razorpay_key_secret",
             )
         ):
             explanation_privacy_violations += 1

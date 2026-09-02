@@ -52,6 +52,7 @@ class ExplanationFactorCode(StrEnum):
 class AuthorizationStatus(StrEnum):
     RECOMMENDATION_ONLY = "recommendation_only"
     SIMULATED_CONFIRMED = "simulated_confirmed"
+    MOCK_PROVIDER_CONFIRMED = "mock_provider_confirmed"
 
 
 @dataclass(frozen=True, slots=True)

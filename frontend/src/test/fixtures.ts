@@ -75,50 +75,58 @@ const metric = (strategy: string, success: string, excess: number) => ({
 })
 
 export const evidenceResponse: EvidenceResponse = {
-  provenance: {
-    dataset: 'Synthetic India Mobility', record_count: 10000, seed: 202611,
-    predictor: 'fare_distribution_personalized_v1', policy: 'balanced',
-    target_collection_probability: '0.970000', project_version: '0.14.0',
+  metadata: {
+    evidence_status: 'complete', dataset: 'Synthetic India Mobility', record_count: 10000,
+    dataset_seed: 202611, project_version: '0.14.0',
     dataset_fingerprint_sha256: 'abcdef0123456789abcdef0123456789',
-    synthetic_data_disclaimer: 'These results use synthetic city profiles and are not production city statistics.',
+    evidence_fingerprint_sha256: '0123456789abcdef0123456789abcdef',
+    personalized_model: { model_version: 'fare_distribution_personalized_v1' },
   },
-  strategies: {
-    exact_estimate: metric('exact_estimate', '0.410000', 800),
-    fixed_buffer_20: metric('fixed_buffer_20', '0.995000', 11000),
-    optimized_balanced: metric('optimized_balanced', '0.971000', 6200),
-  },
-  deltas: { collection_success_percentage_points_vs_exact: '56.100', average_excess_reduction_paise_vs_fixed_20: 4800 },
-  block_distribution: [{ lower_paise: 50000, upper_paise: 59999, count: 3200 }, { lower_paise: 60000, upper_paise: 69999, count: 6800 }],
-  tradeoff_points: [
-    { strategy: 'exact_estimate', average_excess_block_paise: 800, collection_success_rate: '0.410000' },
-    { strategy: 'fixed_buffer_20', average_excess_block_paise: 11000, collection_success_rate: '0.995000' },
-    { strategy: 'optimized_balanced', average_excess_block_paise: 6200, collection_success_rate: '0.971000' },
-  ],
-  per_city: { hyderabad: { record_count: 1420, optimized_collection_success_rate: '0.969000', optimized_average_excess_block_paise: 6100 } },
-  personalization: {
-    stable_history: { prediction_mode: 'personalized', history_count: 8, q97_paise: 70100, recommended_block_paise: 70100 },
-    overrun_prone: { prediction_mode: 'personalized', history_count: 8, q97_paise: 79900, recommended_block_paise: 79900 },
-  },
-  dynamic: {
-    record_count: 500,
-    static: metric('static', '0.920000', 5200), dynamic: metric('dynamic', '0.968000', 6900),
-    dynamic_diagnostics: { average_initial_block_paise: 70100, average_final_authorized_block_paise: 74800, rides_requiring_additional_block_rate: '0.480000' },
-  },
-  strategy_comparison: {
+  primary_strategy_comparison: {
+    metrics: {
+      exact_estimate: metric('exact_estimate', '0.410000', 800),
+      fixed_buffer_20: metric('fixed_buffer_20', '0.995000', 11000),
+      optimized_balanced: metric('optimized_balanced', '0.971000', 6200),
+    },
+    deltas: { optimized_collection_success_percentage_points_vs_exact: '56.100', optimized_average_excess_reduction_paise_vs_fixed_20: 4800 },
+    block_distribution: [{ lower_paise: 50000, upper_paise: 59999, count: 3200 }, { lower_paise: 60000, upper_paise: 69999, count: 6800 }],
+    tradeoff_points: [
+      { strategy: 'exact_estimate', average_excess_block_paise: 800, collection_success_rate: '0.410000' },
+      { strategy: 'fixed_buffer_20', average_excess_block_paise: 11000, collection_success_rate: '0.995000' },
+      { strategy: 'optimized_balanced', average_excess_block_paise: 6200, collection_success_rate: '0.971000' },
+    ],
     confidence_intervals_95: Object.fromEntries(
       ['exact_estimate', 'fixed_buffer_20', 'optimized_balanced'].map(strategy => [strategy, {
         collection_success_rate: { point_estimate: '0.971000', lower: '0.967000', upper: '0.974000', method: 'wilson_score' },
         average_excess_block_paise: { point_estimate: '6200.000000', lower: '6100.000000', upper: '6300.000000', method: 'seeded_percentile_bootstrap', samples: 1000 },
       }]),
-    ) as NonNullable<EvidenceResponse['strategy_comparison']>['confidence_intervals_95'],
+    ),
   },
-  prediction_calibration: {
+  cities: { hyderabad: { record_count: 1420, optimized_collection_success_rate: '0.969000', optimized_average_excess_block_paise: 6100 } },
+  personalization: {
+    test_records: 10000, minimum_personalization_history: 3,
+    same_ride_history_demo: {
+      stable_history: { prediction_mode: 'personalized', history_count: 8, q97_paise: 70100, recommended_block_paise: 70100 },
+      overrun_prone: { prediction_mode: 'personalized', history_count: 8, q97_paise: 79900, recommended_block_paise: 79900 },
+    },
+  },
+  dynamic: {
+    record_count: 500,
+    static: metric('static', '0.920000', 5200), dynamic: metric('dynamic', '0.968000', 6900),
+    dynamic_diagnostics: { average_initial_block_paise: 70100, average_final_authorized_block_paise: 74800, rides_requiring_additional_block_rate: '0.480000' },
+    benefit_breakdown: { static_failed_dynamic_succeeded: 48, static_failed_dynamic_succeeded_rate: '0.096000', both_succeeded: 412, both_succeeded_rate: '0.824000', both_failed: 40, both_failed_rate: '0.080000', static_succeeded_dynamic_failed: 0, static_succeeded_dynamic_failed_rate: '0.000000', dynamic_no_increase_required: 250, dynamic_no_increase_required_rate: '0.500000' },
+  },
+  prediction: {
     quantiles: Object.fromEntries(['0.50', '0.90', '0.95', '0.97', '0.99'].map(quantile => [quantile, { target_coverage: quantile, observed_coverage: quantile, calibration_error: '0.000000', absolute_calibration_error: '0.000000', pinball_loss_paise: '100.000000' }])),
     mean_pinball_loss_paise: '120.000000', median_mae_paise: '450.000000',
     raw_quantile_crossing: { record_count: 0, record_frequency: '0.000000', adjacent_pair_count: 0 },
     prediction_mode_counts: { base: 100, personalized: 9900 },
   },
-  agent_consistency: { record_count: 500, successful_runs: 500, decision_mismatches: 0, average_tool_calls: 4 },
+  agents: { runs: 500, successful_runs: 500, failed_runs: 0, decision_mismatches: 0, equivalence_rate: '1.000000', decision_equivalence_rate: '1.000000', average_tool_calls: 4 },
+  risk_profiles: { collapse_analysis: { all_three_same_rate: '0.980000', interpretation: 'Many policy floors are non-binding.' } },
+  explainability: { record_count: 500, numeric_consistency_failures: 0, privacy_violations: 0 },
+  reserve_pay_mock_validation: { total_scenarios: 11, passed_scenarios: 11, failed_scenarios: 0 },
+  limitations: ['Synthetic evidence only.', 'Calibration is empirical.'],
 }
 
 export const agentDecideResponse = {

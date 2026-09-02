@@ -53,7 +53,7 @@ def render_evidence_markdown(artifact: dict[str, Any]) -> str:
             f"{value['metrics']['collection_success_rate']}, average block "
             f"{value['average_recommended_block_paise']} paise."
         )
-    collapse = risks["collapse_diagnostics"]
+    collapse = risks["collapse_analysis"]
     lines += [
         f"- All three profiles selected the same block on {collapse['all_three_same_count']} "
         f"records ({collapse['all_three_same_rate']}). This is a factual diagnostic, not hidden.",
@@ -67,10 +67,10 @@ def render_evidence_markdown(artifact: dict[str, Any]) -> str:
         "",
         "## Agent, explainability, and mock execution",
         "",
-        f"- Agent runs: {agents['total_runs']}; mismatches: {agents['decision_mismatches']}; "
-        f"equivalence: {agents['equivalence_rate']}.",
+        f"- Agent runs: {agents['runs']}; mismatches: {agents['decision_mismatches']}; "
+        f"equivalence: {agents['decision_equivalence_rate']}.",
         f"- Explanation records: {explainability['record_count']}; numeric mismatches: "
-        f"{explainability['numeric_consistency_mismatches']}; privacy violations: "
+        f"{explainability['numeric_consistency_failures']}; privacy violations: "
         f"{explainability['privacy_violations']}.",
         f"- Mock Reserve Pay scenarios: {mock['passed_scenarios']}/{mock['total_scenarios']} passed.",
         "",
@@ -79,4 +79,3 @@ def render_evidence_markdown(artifact: dict[str, Any]) -> str:
     ]
     lines.extend(f"- {item}" for item in artifact["limitations"])
     return "\n".join(lines) + "\n"
-

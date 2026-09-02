@@ -1,4 +1,7 @@
-"""Reproducible, precomputed evidence for the dashboard Evidence screen."""
+"""Deprecated Phase-11 regression fixture generator.
+
+The sole authoritative artifact is produced by ``evidence.pipeline``.
+"""
 
 from __future__ import annotations
 
@@ -173,6 +176,8 @@ def prepare_dashboard_evidence(
     fixed = strategies["fixed_buffer_20"]
     optimized_metrics = strategies["optimized_balanced"]
     artifact: dict[str, object] = {
+        "deprecated": True,
+        "authoritative_artifact": "demo/evidence/final_evidence.json",
         "provenance": {
             "dataset": "Synthetic India Mobility",
             "record_count": count,

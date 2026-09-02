@@ -145,10 +145,15 @@ class TemplateExplanationRenderer:
             f"The updated target block is {format_inr(dynamic.recommended_target_block)}. "
             f"Recommended additional reserve is {format_inr(dynamic.additional_block_required)}.",
         ]
-        if dynamic.authorization_status is AuthorizationStatus.SIMULATED_CONFIRMED:
+        if dynamic.authorization_status is AuthorizationStatus.MOCK_PROVIDER_CONFIRMED:
             lines.append(
-                "That total was confirmed only in simulated/application session state or by the "
-                "configured mock reserve provider. No external or real payment network was called."
+                "The additional authorization was confirmed by the configured mock reserve "
+                "provider. No external or real payment network was called."
+            )
+        elif dynamic.authorization_status is AuthorizationStatus.SIMULATED_CONFIRMED:
+            lines.append(
+                "That total was confirmed only in simulated/application session state. "
+                "No payment provider or external payment network was called."
             )
         else:
             lines.append(

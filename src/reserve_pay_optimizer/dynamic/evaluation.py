@@ -79,7 +79,7 @@ class DynamicReoptimizationEvaluation:
     diagnostics: DynamicEvaluationDiagnostics
     policy: ReserveRiskPolicy
     record_count: int
-    benefit_categories: dict[str, int]
+    benefit_breakdown: dict[str, object]
     assumption: str = DYNAMIC_EVALUATION_ASSUMPTION
 
     def to_dict(self) -> dict[str, object]:
@@ -95,7 +95,7 @@ class DynamicReoptimizationEvaluation:
             "static": self.static_metrics.to_dict(),
             "dynamic": self.dynamic_metrics.to_dict(),
             "dynamic_diagnostics": self.diagnostics.to_dict(),
-            "benefit_categories": self.benefit_categories,
+            "benefit_breakdown": self.benefit_breakdown,
         }
 
 
@@ -113,7 +113,7 @@ def evaluate_dynamic_reoptimization(
     total_updates = 0
     increase_count = 0
     sufficient_count = 0
-    benefit_categories = {
+    benefit_counts = {
         "static_failed_dynamic_succeeded": 0,
         "both_succeeded": 0,
         "both_failed": 0,
@@ -155,7 +155,7 @@ def evaluate_dynamic_reoptimization(
         final_blocks.append(final.amount_paise)
         ride_additions.append(final.amount_paise - initial.amount_paise)
         if final.amount_paise == initial.amount_paise:
-            benefit_categories["dynamic_no_increase_required"] += 1
+            benefit_counts["dynamic_no_increase_required"] += 1
         dynamic_decision = ReserveDecision(
             transaction_id=record.initial_transaction.transaction_id,
             strategy="dynamic_personalized_reoptimization",
@@ -167,13 +167,13 @@ def evaluate_dynamic_reoptimization(
         )
         dynamic_evaluations.append(dynamic_evaluation)
         if static_evaluation.collection_success and dynamic_evaluation.collection_success:
-            benefit_categories["both_succeeded"] += 1
+            benefit_counts["both_succeeded"] += 1
         elif not static_evaluation.collection_success and dynamic_evaluation.collection_success:
-            benefit_categories["static_failed_dynamic_succeeded"] += 1
+            benefit_counts["static_failed_dynamic_succeeded"] += 1
         elif static_evaluation.collection_success and not dynamic_evaluation.collection_success:
-            benefit_categories["static_succeeded_dynamic_failed"] += 1
+            benefit_counts["static_succeeded_dynamic_failed"] += 1
         else:
-            benefit_categories["both_failed"] += 1
+            benefit_counts["both_failed"] += 1
 
     count = len(dataset.records)
     triggered = [value for value in ride_additions if value > 0]
@@ -201,5 +201,11 @@ def evaluate_dynamic_reoptimization(
         diagnostics=diagnostics,
         policy=policy,
         record_count=count,
-        benefit_categories=benefit_categories,
+        benefit_breakdown={
+            **benefit_counts,
+            **{
+                f"{name}_rate": format_ratio(Decimal(value) / Decimal(count))
+                for name, value in benefit_counts.items()
+            },
+        },
     )

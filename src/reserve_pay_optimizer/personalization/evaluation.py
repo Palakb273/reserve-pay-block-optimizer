@@ -82,12 +82,19 @@ class CohortEvaluation:
     personalized: PredictionMetrics
 
     def to_dict(self) -> dict[str, object]:
+        base_values = self.base.to_dict()
+        personalized_values = self.personalized.to_dict()
         return {
             "record_count": self.record_count,
             "fallback_record_count": self.fallback_record_count,
             "personalized_record_count": self.personalized_record_count,
-            "base": self.base.to_dict(),
-            "personalized": self.personalized.to_dict(),
+            "base_mean_pinball_loss_paise": base_values["mean_pinball_loss_paise"],
+            "personalized_mean_pinball_loss_paise": personalized_values["mean_pinball_loss_paise"],
+            "base_q97_coverage": base_values["quantiles"]["0.97"]["observed_coverage"],
+            "personalized_q97_coverage": personalized_values["quantiles"]["0.97"]["observed_coverage"],
+            "low_sample_size": self.record_count < 100,
+            "base": base_values,
+            "personalized": personalized_values,
         }
 
 
@@ -190,7 +197,11 @@ class PersonalizationEvaluation:
         )
         return {
             "test_records": self.overall.record_count,
+            "eligible_record_count": self.overall.record_count,
             "minimum_personalization_history": MINIMUM_PERSONALIZATION_HISTORY,
+            "fallback_record_count": self.overall.fallback_record_count,
+            "cold_start_count": self.overall.fallback_record_count,
+            "personalized_record_count": self.overall.personalized_record_count,
             "fallback_percentage": format_ratio(
                 Decimal(self.overall.fallback_record_count)
                 / Decimal(self.overall.record_count)
@@ -212,6 +223,10 @@ class PersonalizationEvaluation:
                         _mean_absolute_calibration_error(personalized)
                     ),
                 },
+                "base_q97_coverage": base.to_dict()["quantiles"]["0.97"]["observed_coverage"],
+                "personalized_q97_coverage": personalized.to_dict()["quantiles"]["0.97"]["observed_coverage"],
+                "base_q99_coverage": base.to_dict()["quantiles"]["0.99"]["observed_coverage"],
+                "personalized_q99_coverage": personalized.to_dict()["quantiles"]["0.99"]["observed_coverage"],
             },
             "history_depth": history_depth,
             "observed_history_segments": {

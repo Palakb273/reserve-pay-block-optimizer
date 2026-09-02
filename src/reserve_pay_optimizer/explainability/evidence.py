@@ -170,6 +170,7 @@ def _dynamic_changes(
 def build_dynamic_decision_evidence(
     session: DynamicRideSession,
     decision: DynamicReoptimizationDecision,
+    authorization_status: AuthorizationStatus | None = None,
 ) -> DecisionExplanation:
     if decision.transaction_id != session.transaction_id:
         raise ExplanationConsistencyError("dynamic decision belongs to another session")
@@ -242,7 +243,7 @@ def build_dynamic_decision_evidence(
             recommended_target_block=decision.recommended_target_block,
             additional_block_required=decision.additional_block_required,
             current_block_sufficient=decision.current_block_sufficient,
-            authorization_status=(
+            authorization_status=authorization_status or (
                 AuthorizationStatus.SIMULATED_CONFIRMED
                 if confirmed
                 else AuthorizationStatus.RECOMMENDATION_ONLY

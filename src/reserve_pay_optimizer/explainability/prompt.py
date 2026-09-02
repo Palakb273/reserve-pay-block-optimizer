@@ -34,7 +34,8 @@ Do not claim these are Razorpay production policies or coefficients.
 Do not label customers as good, bad, or risky.
 Describe customer history only as aggregated observed transactions.
 For dynamic decisions, distinguish current authorized funds from recommended additional reserve.
-Do not claim authorization occurred unless authorization_status is simulated_confirmed.
+Do not claim authorization occurred unless authorization_status is simulated_confirmed or mock_provider_confirmed.
+When authorization_status is mock_provider_confirmed, state that no external or real payment network was called.
 
 Return one JSON object with these exact fields:
 transaction_id, recommended_block_paise, estimated_collection_probability,

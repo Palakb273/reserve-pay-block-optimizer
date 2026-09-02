@@ -26,6 +26,7 @@ def canonical_evidence_payload(artifact: dict[str, Any]) -> bytes:
     metadata = value.get("metadata")
     if isinstance(metadata, dict):
         metadata.pop("evidence_fingerprint_sha256", None)
+        metadata.pop("evidence_fingerprint", None)
     agents = value.get("agents")
     if isinstance(agents, dict):
         for field in _OBSERVATIONAL_AGENT_FIELDS:
@@ -41,4 +42,3 @@ def canonical_evidence_payload(artifact: dict[str, Any]) -> bytes:
 
 def evidence_fingerprint(artifact: dict[str, Any]) -> str:
     return sha256(canonical_evidence_payload(artifact)).hexdigest()
-

@@ -18,11 +18,42 @@ from reserve_pay_optimizer.reserve_pay.models import (
 from reserve_pay_optimizer.reserve_pay.service import ReservePayService, RetryConfig
 
 
-def validate_mock_reserve_pay(context) -> dict[str, object]:
+def validate_mock_reserve_pay(
+    context,
+    *,
+    dynamic_dataset=None,
+    dynamic_service=None,
+    policy=None,
+) -> dict[str, object]:
     scenarios: list[dict[str, object]] = []
 
+    expected_states = {
+        "create_success": "authorized",
+        "idempotent_create": "same result; no duplicate block",
+        "increase_success": "authorized amount increased exactly once",
+        "failed_increase_no_mutation": "authorized amount unchanged",
+        "transient_retry_success": "authorized after retry with the same idempotency key",
+        "permanent_failure_surfaced": "rejected once without retry",
+        "idempotency_conflict": "conflict rejected without execution",
+        "partial_debit": "partially_debited with remaining authorization",
+        "full_settlement": "actual fare fully debited within authorization",
+        "release_remaining_amount": "unused remaining authorization released",
+        "final_status_and_accounting": "released and accounting invariant balanced",
+        "under_block_shortfall": "explicit shortfall with no over-debit",
+        "dynamic_additional_authorization_success": "provider success confirms dynamic target",
+        "dynamic_additional_authorization_failure_no_mutation": "failed provider execution preserves authorized session state",
+        "stale_success_reconciliation_visible": "reconciliation_required without latest-session mutation",
+    }
+
     def passed(name: str, details: dict[str, object] | None = None) -> None:
-        scenarios.append({"name": name, "passed": True, "details": details or {}})
+        observed = details or {}
+        scenarios.append({
+            "scenario": name,
+            "expected_state": expected_states[name],
+            "observed_state": observed,
+            "passed": True,
+            "details": observed,
+        })
 
     decision = ReserveDecision(context.transaction_id, "evidence", "1", Money(100_000))
     provider = MockReserveProvider()
@@ -113,9 +144,13 @@ def validate_mock_reserve_pay(context) -> dict[str, object]:
     settlement = settlement_service.settle_completed_transaction(
         outcome, block_id=settlement_block.block_id, idempotency_key="settle"
     )
-    passed("settlement_debit_and_release", {
+    passed("full_settlement", {
         "debited_amount_paise": settlement.debited_amount.amount_paise,
+        "settlement_status": settlement.status.value,
+    })
+    passed("release_remaining_amount", {
         "released_amount_paise": settlement.released_amount.amount_paise,
+        "final_status": settlement.final_block.status.value,
     })
     final = settlement_service.get_block_status(
         GetBlockStatusRequest(settlement_block.block_id, context.transaction_id)
@@ -136,11 +171,95 @@ def validate_mock_reserve_pay(context) -> dict[str, object]:
         raise AssertionError("under-block shortfall was not exposed")
     passed("under_block_shortfall", {"shortfall_paise": under.shortfall.amount_paise})
 
-    # The provider/service discrepancy is the condition Phase 10 surfaces for reconciliation.
-    passed("stale_success_reconciliation_visible", {
-        "validated_by": "ReservePayService.confirm_dynamic_increase stale/version guard tests",
-        "status": "reconciliation_required",
-    })
+    if dynamic_dataset is not None and dynamic_service is not None and policy is not None:
+        stale_proof = None
+        for record in dynamic_dataset.records:
+            if len(record.updates) < 2:
+                continue
+            session = dynamic_service.start_dynamic_session(record.initial_transaction, policy)
+            first = dynamic_service.apply_context_update(session, record.updates[0])
+            if first.decision.additional_block_required.amount_paise <= 0:
+                continue
+            stale_proof = (record, session, first)
+            break
+        if stale_proof is None:
+            raise AssertionError("dynamic cohort has no usable stale-confirmation scenario")
+        record, session, first = stale_proof
+
+        success_provider = MockReserveProvider()
+        success_service = ReservePayService(
+            success_provider, dynamic_service=dynamic_service, sleeper=lambda _: None
+        )
+        success_initial = success_service.authorize_initial_block(
+            session.initial_optimization.reserve_decision,
+            customer_reference=record.initial_transaction.customer_id,
+            idempotency_key="dynamic-success-create",
+        )
+        success = success_service.request_additional_block(
+            first.session,
+            first.decision,
+            block_id=success_initial.block.block_id,
+            idempotency_key="dynamic-success-increase",
+        )
+        if success.status.value != "succeeded" or success.session.current_authorized_block != first.decision.recommended_target_block:
+            raise AssertionError("successful dynamic increase was not confirmed")
+        passed("dynamic_additional_authorization_success", {
+            "recommended_target_paise": first.decision.recommended_target_block.amount_paise,
+            "authorized_after_paise": success.session.current_authorized_block.amount_paise,
+        })
+
+        dynamic_failure_provider = MockReserveProvider(MockFailureConfig(fail_next_increase=True))
+        dynamic_failure_service = ReservePayService(
+            dynamic_failure_provider, dynamic_service=dynamic_service, sleeper=lambda _: None
+        )
+        failure_initial = dynamic_failure_service.authorize_initial_block(
+            session.initial_optimization.reserve_decision,
+            customer_reference=record.initial_transaction.customer_id,
+            idempotency_key="dynamic-failure-create",
+        )
+        before_dynamic_failure = first.session.current_authorized_block.amount_paise
+        failed_dynamic = dynamic_failure_service.request_additional_block(
+            first.session,
+            first.decision,
+            block_id=failure_initial.block.block_id,
+            idempotency_key="dynamic-failure-increase",
+        )
+        if failed_dynamic.status.value != "failed" or failed_dynamic.session.current_authorized_block.amount_paise != before_dynamic_failure:
+            raise AssertionError("failed dynamic increase mutated application authorization")
+        passed("dynamic_additional_authorization_failure_no_mutation", {
+            "recommended_target_paise": first.decision.recommended_target_block.amount_paise,
+            "authorized_before_paise": before_dynamic_failure,
+            "authorized_after_paise": failed_dynamic.session.current_authorized_block.amount_paise,
+        })
+
+        stale_provider = MockReserveProvider()
+        stale_service = ReservePayService(
+            stale_provider, dynamic_service=dynamic_service, sleeper=lambda _: None
+        )
+        initial = stale_service.authorize_initial_block(
+            session.initial_optimization.reserve_decision,
+            customer_reference=record.initial_transaction.customer_id,
+            idempotency_key="stale-create",
+        )
+        provider_success = stale_service.increase_block(IncreaseBlockRequest(
+            initial.block.block_id,
+            record.initial_transaction.transaction_id,
+            first.decision.additional_block_required,
+            "stale-increase",
+        ))
+        latest = dynamic_service.apply_context_update(first.session, record.updates[1])
+        reconciliation = stale_service.confirm_dynamic_increase(
+            latest.session, first.decision, provider_success
+        )
+        if reconciliation.status.value != "reconciliation_required":
+            raise AssertionError("stale provider success did not require reconciliation")
+        if reconciliation.session.current_authorized_block != session.current_authorized_block:
+            raise AssertionError("stale provider success mutated current application authorization")
+        passed("stale_success_reconciliation_visible", {
+            "status": reconciliation.status.value,
+            "provider_authorized_paise": provider_success.block.authorized_amount.amount_paise,
+            "application_authorized_paise": reconciliation.session.current_authorized_block.amount_paise,
+        })
     return {
         "provider": "mock",
         "network_calls_made": False,

@@ -7,6 +7,7 @@ from decimal import Decimal
 from pathlib import Path
 import tempfile
 import unittest
+from unittest.mock import patch
 
 from fastapi.testclient import TestClient
 
@@ -171,6 +172,26 @@ class AgentLayerTests(unittest.TestCase):
         self.assertTrue(audit.output_fingerprint_sha256)
         self.assertEqual(audit.status, "succeeded")
 
+    def test_failed_tool_execution_is_retained_in_the_audit_trace(self) -> None:
+        registry = AgentToolRegistry(
+            base_model=self.base_artifact.model,
+            personalized_model=self.personalized_artifact.model,
+            history_provider=self.history_provider,
+        )
+        state = ReserveAgentState(
+            request=ReserveAgentRequest(transaction=self._sample_context()),
+            agent_run_id="RUN-FAIL-TRACE",
+        )
+        with patch(
+            "reserve_pay_optimizer.agents.registry.execute_get_customer_history",
+            side_effect=RuntimeError("sensitive provider detail"),
+        ), self.assertRaises(RuntimeError):
+            registry.execute_tool("get_customer_history", {}, state)
+        self.assertEqual(len(state.tool_calls), 1)
+        self.assertEqual(state.tool_calls[0].status, "failed")
+        self.assertEqual(state.tool_calls[0].error, "RuntimeError")
+        self.assertNotIn("sensitive", str(state.tool_calls[0].to_dict()))
+
     def test_prediction_tool_cold_start_vs_personalized(self) -> None:
         registry = AgentToolRegistry(
             base_model=self.base_artifact.model,
@@ -255,6 +276,14 @@ class AgentLayerTests(unittest.TestCase):
         self.assertEqual(agent_dec.prediction_mode, direct_pred.prediction_mode)
         self.assertEqual(agent_dec.objective_score, direct_opt.objective_score)
         self.assertEqual(len(agent_response.tool_trace), 4)
+        serialized = agent_response.to_dict()["decision"]
+        for field in (
+            "estimated_collection_probability",
+            "estimated_under_block_probability",
+            "objective_score",
+            "confidence",
+        ):
+            self.assertRegex(serialized[field], r"^-?\d+\.\d{6}$")
 
         # Verify tool trace sequence
         trace_tools = [item.tool_name for item in agent_response.tool_trace]
@@ -279,6 +308,18 @@ class AgentLayerTests(unittest.TestCase):
         self.assertTrue(explanation.details)
         self.assertTrue(explanation.factors)
         self.assertIn("Modeled collection coverage", explanation.confidence_note)
+
+    def test_cold_start_reason_uses_shared_minimum_history(self) -> None:
+        orchestrator = AgentOrchestrator(
+            base_model=self.base_artifact.model,
+            personalized_model=self.personalized_artifact.model,
+            history_provider=self.history_provider,
+        )
+        response = orchestrator.run(ReserveAgentRequest(
+            transaction=self._sample_context(customer_id="CUST-NO-HISTORY")
+        ))
+        self.assertEqual(response.decision.prediction_mode, "base")
+        self.assertIn("minimum of 3 rides", response.decision.reason)
 
     def test_decision_consistency_violation_raises(self) -> None:
         # A malicious or broken model trying to return a fabricated block
